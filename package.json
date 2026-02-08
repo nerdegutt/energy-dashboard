@@ -1,0 +1,8 @@
+{
+  "name": "energy-dashboard",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2",
+    "tibber-api": "^5"
+  }
+}

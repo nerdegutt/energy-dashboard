@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strømforbruk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { mono: ['JetBrains Mono', 'monospace'] },
+          colors: { bg: '#0f0f23', panel: '#1a1a2e' },
+        },
+      },
+    };
+  </script>
+  <style>
+    body { background: #0f0f23; font-family: 'JetBrains Mono', monospace; }
+    .panel {
+      background: rgba(26, 26, 46, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(8px);
+    }
+    .period-btn { transition: all 0.15s; }
+    .period-btn.active {
+      background: rgba(34, 211, 238, 0.15);
+      color: #22d3ee;
+      border-color: rgba(34, 211, 238, 0.3);
+    }
+  </style>
+</head>
+<body class="text-[#a0a0b0] min-h-screen">
+
+  <!-- Login-skjerm -->
+  <div id="login-screen" class="hidden flex items-center justify-center min-h-screen">
+    <div class="panel rounded-lg p-8 w-full max-w-sm">
+      <h1 class="text-xl text-[#22d3ee] mb-6 text-center font-semibold">Strømforbruk</h1>
+      <form id="login-form" class="space-y-4">
+        <input id="login-email" type="email" placeholder="E-post"
+          class="w-full bg-[#0f0f23] border border-[#333] rounded px-3 py-2 text-sm text-[#a0a0b0] focus:outline-none focus:border-[#22d3ee]" />
+        <input id="login-password" type="password" placeholder="Passord"
+          class="w-full bg-[#0f0f23] border border-[#333] rounded px-3 py-2 text-sm text-[#a0a0b0] focus:outline-none focus:border-[#22d3ee]" />
+        <button type="submit"
+          class="w-full bg-[#22d3ee] text-[#0f0f23] font-semibold rounded py-2 text-sm hover:bg-[#06b6d4] transition">
+          Logg inn
+        </button>
+        <p id="login-error" class="text-red-400 text-xs text-center hidden"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="hidden max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-lg text-[#22d3ee] font-semibold tracking-wide">Strømforbruk</h1>
+      <div class="flex items-center gap-4">
+        <div id="period-selector" class="flex gap-1">
+          <button class="period-btn active text-xs px-3 py-1 rounded border border-[#333]" data-days="7">7d</button>
+          <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="30">30d</button>
+          <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="365">1y</button>
+        </div>
+        <button id="refresh-btn" class="text-xs text-[#666] hover:text-[#a0a0b0] transition" title="Hent ferske data">&#x21bb;</button>
+        <button id="logout-btn" class="text-xs text-[#666] hover:text-[#a0a0b0] transition">Logg ut</button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="text-center py-20 text-sm text-[#666]">Henter data...</div>
+
+    <!-- Tom database -->
+    <div id="empty-state" class="hidden text-center py-20 text-sm text-[#666]">
+      Ingen data ennå. Kjør collect-endepunktet for å hente strømdata.
+    </div>
+
+    <!-- Grafer -->
+    <div id="charts-container" class="hidden space-y-4">
+      <!-- Rad 1: Gauge + Linjegraf -->
+      <div class="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-4">
+        <div class="panel rounded-lg p-4">
+          <div id="gauge-chart" style="height: 220px;"></div>
+        </div>
+        <div class="panel rounded-lg p-4">
+          <div id="line-chart" style="height: 350px;"></div>
+        </div>
+      </div>
+
+      <!-- Rad 2: Temperatur vs forbruk -->
+      <div class="panel rounded-lg p-4">
+        <div id="scatter-chart" style="height: 350px;"></div>
+      </div>
+
+      <!-- Rad 3: Heatmap -->
+      <div class="panel rounded-lg p-4">
+        <div id="heatmap-chart" style="height: 300px;"></div>
+      </div>
+
+      <!-- Rad 4: Snitt per ukedag -->
+      <div class="panel rounded-lg p-4">
+        <div id="weekday-chart" style="height: 280px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
