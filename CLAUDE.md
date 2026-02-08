@@ -8,7 +8,7 @@ Personlig strømforbruk-dashboard som henter timedata fra Tibber API, lagrer i S
 
 ## Utvikling
 
-- **Ingen build step, ingen bundler, ingen React/Next.js** – ren HTML + vanilla JS + Vercel serverless functions
+- **Ingen build step, ingen bundler, ingen React/Next.js** – ren HTML + vanilla JS (ES modules) + Vercel serverless functions (CommonJS)
 - Lokal utvikling: `vercel dev` (krever Vercel CLI og `.env`-fil med alle variabler fra Environment Variables-seksjonen)
 - Deploy: push til `main` → Vercel bygger automatisk
 - Manuell datainnsamling: `curl -X POST http://localhost:3000/api/collect -H "x-cron-secret: <din-nøkkel>"`
@@ -19,15 +19,15 @@ Personlig strømforbruk-dashboard som henter timedata fra Tibber API, lagrer i S
 ```
 GitHub Actions (cron, :15 hver time)
     ↓
-/api/collect.js (Vercel serverless function)
-    ↓ henter siste 24t fra Tibber API (upsert, selvhelende)
-    ↓ henter temperatur fra Frost API (met.no)
+/api/collect.js (Vercel serverless function, CommonJS)
+    ↓ henter siste 24t fra Tibber API via tibber-api-pakken (upsert, selvhelende)
+    ↓ henter temperatur fra Frost API (met.no, stasjon SN17280)
     ↓
 Supabase (PostgreSQL)
     ↓
-/api/data.js?days=7 (Vercel serverless, verifiserer Supabase auth token)
+Frontend spør Supabase direkte via JS-klienten (RLS sikrer tilgang)
     ↓
-index.html (statisk, ECharts + Tailwind CSS + Supabase Auth)
+public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 ```
 
 ## Filstruktur
@@ -35,15 +35,20 @@ index.html (statisk, ECharts + Tailwind CSS + Supabase Auth)
 ```
 /
 ├── api/
-│   ├── collect.js        # Cron-endepunkt: Tibber + Frost → Supabase
-│   └── data.js           # Data-endepunkt: Supabase → JSON (auth-beskyttet)
+│   └── collect.js          # Cron-endepunkt: Tibber + Frost → Supabase (CommonJS)
 ├── public/
-│   └── index.html         # Dashboard: ECharts + Tailwind + Supabase Auth
-├── vercel.json            # Vercel-konfigurasjon
+│   ├── index.html           # HTML-skjelett, CDN-imports, login-skjerm, dashboard-layout
+│   └── js/
+│       ├── app.js           # Entry point: auth, periodevelger, orkestrering
+│       ├── auth.js          # Supabase-klient, login/logout, session-håndtering
+│       ├── data.js          # Hent data fra Supabase, cache, beregninger
+│       └── charts.js        # Alle 5 ECharts-konfigurasjoner og rendering
+├── package.json             # Avhengigheter: @supabase/supabase-js, tibber-api
+├── vercel.json              # Vercel-konfigurasjon (maxDuration: 60 for collect)
 ├── .github/
 │   └── workflows/
-│       └── collect.yml    # GitHub Actions cron-trigger
-├── .env.example           # Template for environment variables
+│       └── collect.yml      # GitHub Actions cron-trigger
+├── .env.example             # Template for environment variables
 └── CLAUDE.md
 ```
 
@@ -51,7 +56,8 @@ index.html (statisk, ECharts + Tailwind CSS + Supabase Auth)
 
 - **Runtime**: Vercel serverless functions (Node.js)
 - **Database**: Supabase (PostgreSQL) – free tier
-- **Auth**: Supabase Auth med Google OAuth
+- **Auth**: Supabase Auth med e-post/passord
+- **Tibber**: `tibber-api@^5` npm-pakke (wrapper rundt GraphQL API)
 - **Grafer**: ECharts (via CDN)
 - **Styling**: Tailwind CSS (via CDN)
 - **Cron**: GitHub Actions (kjører :15 over hver time)
@@ -71,80 +77,58 @@ CREATE TABLE consumption (
 
 ### RLS
 
-- Aktiver Row Level Security på `consumption`-tabellen
+- Row Level Security aktivert på `consumption`-tabellen
 - Policy: Tillat `SELECT` kun for autentiserte brukere
-- Ingen public access – all lesing går via `/api/data.js` som verifiserer token
+- Frontend spør Supabase direkte – ingen egen API-rute for lesing
 
 ### Auth
 
-- Sett opp Google OAuth provider i Supabase dashboard
-- Konfigurer redirect URL til Vercel-domenet
-- Begrens tilgang til spesifikke e-postadresser om ønskelig
+- E-post/passord-innlogging via Supabase Auth
+- Supabase anon key hardkodet i `public/js/auth.js`
 
-## Environment Variables (Vercel)
+## Environment Variables
+
+### Vercel (Settings → Environment Variables)
 
 ```
 TIBBER_API_TOKEN=           # Fra developer.tibber.com
 TIBBER_HOME_ID=             # Home ID fra Tibber (finn via API explorer)
 SUPABASE_URL=               # Supabase prosjekt-URL
 SUPABASE_SERVICE_KEY=       # Supabase service_role key (kun server-side)
-SUPABASE_ANON_KEY=          # Supabase anon key (brukes i frontend)
 CRON_SECRET=                # Hemmelig nøkkel for å sikre collect-endepunktet
 FROST_CLIENT_ID=            # Fra frost.met.no
 ```
 
+### GitHub Actions (Settings → Secrets and variables → Actions)
+
+- **Repository secret**: `CRON_SECRET` – samme verdi som i Vercel
+- **Repository variable**: `COLLECT_URL` – `https://energy-dashboard-tan.vercel.app/api/collect`
+
 ## /api/collect.js
 
 ### Sikkerhet
+- Kun POST-metode tillatt
 - Sjekk `x-cron-secret` header mot `CRON_SECRET` env var
 - Returner 401 hvis mismatch
 
 ### Tibber API
-- GraphQL-endepunkt: `https://api.tibber.com/v1-beta/gql`
-- Auth: `Bearer ${TIBBER_API_TOKEN}`
-- Default: hent siste 24 timer (`last: 24`)
+- Bruker `tibber-api` npm-pakken (`TibberQuery`)
+- Henter for spesifikt hjem via `TIBBER_HOME_ID`
+- Default: hent siste 24 timer via `getConsumption('HOURLY', 24, homeId)`
 - Støtter `?hours=N` query parameter for backfill
-- For hours > 744: loop i batches à 744 med `first`/`after` paginering
-
-```graphql
-{
-  viewer {
-    homes {
-      consumption(resolution: HOURLY, last: 24) {
-        nodes {
-          from
-          to
-          consumption
-        }
-      }
-    }
-  }
-}
-```
+- For hours > 744: paginerer med rå GraphQL (`first`/`after`) via `home(id: "...")`
 
 ### Frost API (met.no)
 - Endepunkt: `https://frost.met.no/observations/v0.jsonld`
 - Auth: Basic auth med `FROST_CLIENT_ID` som brukernavn, tomt passord
-- Hent timetemperatur fra nærmeste værstasjon
-- Krever `User-Agent`-header med kontaktinfo
-- Slå opp passende stasjon-ID for brukerens lokasjon
+- Stasjon: SN17280 (Gullholmen)
+- Krever `User-Agent`-header
+- Frost-feil stopper ikke innsamlingen – temperatur settes til null
 
 ### Upsert til Supabase
-- Bruk `supabase.from('consumption').upsert()` med `timestamp` som conflict target
-- Upsert gjør at gjentatte kjøringer er idempotente og selvhelende
-- Skriv både `consumption_kwh` og `outside_temp_c` i samme operasjon
-
-## /api/data.js
-
-### Auth
-- Les `Authorization: Bearer <token>` fra request header
-- Verifiser token med Supabase: `supabase.auth.getUser(token)`
-- Returner 401 hvis ugyldig
-
-### Query
-- Aksepter `?days=N` parameter (default: 7)
-- Hent rader fra Supabase sortert på timestamp
-- Returner JSON-array med `{ timestamp, consumption_kwh, outside_temp_c }`
+- Dedupliserer rader på timestamp (Map) før innsetting
+- Upsert i chunks à 1000 rader med `onConflict: 'timestamp'`
+- Idempotent – gjentatte kjøringer er trygge
 
 ## GitHub Actions Workflow
 
@@ -153,7 +137,7 @@ name: Collect energy data
 on:
   schedule:
     - cron: '15 * * * *'
-  workflow_dispatch:        # Manuell trigger for testing
+  workflow_dispatch:
 jobs:
   collect:
     runs-on: ubuntu-latest
@@ -163,12 +147,7 @@ jobs:
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
 ```
 
-- `COLLECT_URL` som repository variable (ikke secret, bare URL)
-- `CRON_SECRET` som repository secret
-- `workflow_dispatch` for å kunne trigge manuelt
-- `-f` flag på curl for å feile ved HTTP-feil
-
-## Frontend (index.html)
+## Frontend
 
 ### Avhengigheter (CDN)
 - ECharts: `https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js`
@@ -177,85 +156,84 @@ jobs:
 - Font: JetBrains Mono fra Google Fonts
 
 ### Auth-flyt
-1. Initialiser Supabase-klient med `SUPABASE_URL` og `SUPABASE_ANON_KEY`
+1. Initialiser Supabase-klient med hardkodede `SUPABASE_URL` og `SUPABASE_ANON_KEY` i `auth.js`
 2. Sjekk `supabase.auth.getSession()`
-3. Hvis ikke innlogget: vis "Logg inn med Google"-knapp
-4. Knappen kaller `supabase.auth.signInWithOAuth({ provider: 'google' })`
-5. Etter redirect tilbake: hent session og bruk access_token til API-kall
+3. Hvis ikke innlogget: vis login-skjerm med e-post/passord
+4. Kaller `supabase.auth.signInWithPassword()`
+5. Etter innlogging: hent data direkte fra Supabase via JS-klienten
+
+### Data-henting og cache
+- Frontend spør Supabase direkte (ingen `/api/data.js`-rute)
+- Paginerer i batches à 1000 rader (Supabase default-limit)
+- **localStorage-cache** med 1 times TTL per periode (7d/30d/365d)
+- Refresh-knapp tømmer cache og henter ferske data
+
+### Periodevelger og aggregering
+- **7d**: Timedata, x-akse viser hele timer, 24t rullende snitt
+- **30d**: Timedata, x-akse viser datoer, 24t rullende snitt
+- **1y**: Daglige snitt (aggregert client-side), x-akse viser måneder, 7d rullende snitt
 
 ### Dashboard-layout
 
 ```
-┌──────────────────────────────────────────────┐
-│  ⚡ Strømforbruk                  [7d 30d 1y] │  ← Periodevelger
-├──────────┬───────────────────────────────────┤
-│          │                                   │
-│  GAUGE   │     Linjegraf                     │
-│  1.2 kW  │     (rådata + 24t rullende snitt) │
-│  snitt   │                                   │
-│  24t     │     [════════ dataZoom ══════════] │
-│          │                                   │
-├──────────┴───────────────────────────────────┤
-│                                              │
-│  Temperatur vs forbruk (scatter/dual-axis)   │
-│                                              │
-├──────────────────────────────────────────────┤
-│                                              │
-│  Heatmap: ukedag × klokketime               │
-│                                              │
-├──────────────────────────────────────────────┤
-│                                              │
-│  Snitt per ukedag (bar chart)                │
-│                                              │
-└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Strømforbruk              [7d 30d 1y] [↻] [Logg ut] │
+├──────────┬───────────────────────────────────────────┤
+│          │                                           │
+│  GAUGE   │  Linjegraf (dual-axis)                    │
+│  snitt   │  - Forbruk (cyan) + rullende snitt (lilla)│
+│  24t     │  - Temperatur (oransje, høyre y-akse)     │
+│          │  [════════ dataZoom ══════════]            │
+│          │                                           │
+├──────────┴───────────────────────────────────────────┤
+│  Temperatur vs forbruk (scatter)                     │
+├──────────────────────────────────────────────────────┤
+│  Heatmap: ukedag × klokketime                       │
+├──────────────────────────────────────────────────────┤
+│  Snitt per ukedag (bar chart)                        │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### Grafana-inspirert tema
 
-Felles ECharts-konfigurasjon for alle grafer:
-
-- Bakgrunn: `transparent` (siden har mørk bakgrunn)
-- Sidebakgrunn: `#0f0f23` eller `#1a1a2e`
-- Paneler: halvtransparente med subtile borders (`rgba(255,255,255,0.05)`), `backdrop-blur`
+- Sidebakgrunn: `#0f0f23`
+- Paneler: `rgba(26, 26, 46, 0.8)` med `backdrop-filter: blur(8px)` og border `rgba(255,255,255,0.05)`
 - Tekstfarge: `#a0a0b0`
-- Font: `JetBrains Mono, monospace` for tall og akser
+- Font: `JetBrains Mono, monospace`
 - Grid-linjer: `rgba(255,255,255,0.05)`
-- Akselinjer: `#333`
 - Primærfarge (forbruk): `#22d3ee` (cyan)
-- Sekundærfarge (temperatur): `#f97316` (oransje)
-- Linjegraf med gradient areaStyle (farge → transparent nedover)
-- `smooth: true` på linjer
-- dataZoom-komponent for zoom/pan på tidsakse
+- Snitt-linje: `#a78bfa` (lilla)
+- Temperatur: `#f97316` (oransje)
 
-### Client-side beregninger
+### Client-side beregninger (data.js)
 
-All aggregering gjøres i JavaScript etter at rådata er hentet:
-
-- **Rullende 24t-snitt**: sliding window over 24 datapunkter
-- **Snitt per ukedag**: grupper på `getDay()`, beregn gjennomsnitt
-- **Snitt per klokketime**: grupper på `getHours()`, beregn gjennomsnitt
-- **Heatmap-data**: kryss av ukedag × klokketime med snittverdi
+- **Rullende snitt**: sliding window (24 timer eller 7 dager)
+- **Daglig snitt**: aggregering per dato for årsvisning
+- **Snitt per ukedag**: grupper på `getDay()`, rekkefølge man–søn
+- **Heatmap-data**: kryss av ukedag (man=0) × klokketime med snittverdi
 
 ## Backfill (initial datainnhenting)
 
 Kjøres én gang manuelt for å fylle databasen med historisk data:
 
 ```bash
-curl -X POST "https://din-app.vercel.app/api/collect?hours=8760" \
+curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000" \
   -H "x-cron-secret: din-nøkkel"
 ```
 
 - Tibber har data 1-2 år tilbake
-- For å finne hvor langt tilbake: spør med `last: 100000`, den returnerer bare det som finnes
-- Funksjonen looper automatisk i batches à 744 timer ved hours > 744
+- `hours=100000` henter alt som finnes (returnerer bare det som eksisterer)
+- Funksjonen paginerer automatisk i batches à 744 timer
+- Deduplisering sikrer at gjentatte kjøringer er trygge
 
 ## Viktige detaljer
 
-- Tibber API bruker GraphQL med Bearer token auth
+- `api/collect.js` er CommonJS (Vercel default uten framework)
+- Frontend-JS er ES modules (`<script type="module">`)
+- Tibber API aksesseres via `tibber-api` npm-pakke, ikke rå GraphQL
 - Frost API bruker Basic auth (client_id som brukernavn, tomt passord) og krever User-Agent header
-- Supabase anon key er trygg å eksponere i frontend – sikkerhet styres av RLS og token-verifisering
-- Supabase service key brukes KUN i serverless functions, aldri i frontend
+- Supabase anon key er trygg å eksponere i frontend – sikkerhet styres av RLS
+- Supabase service key brukes KUN i `api/collect.js`, aldri i frontend
 - Vercel free tier (Hobby) er tilstrekkelig – cron håndteres av GitHub Actions
 - Supabase free tier holder i årevis med denne datamengden (~8760 rader/år)
 - GitHub Actions cron er ikke presis (5-15 min forsinkelse), men irrelevant for timedata
-- Kjør cron :15 over hver time for å gi Tibber tid til å aggregere
