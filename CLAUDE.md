@@ -183,8 +183,8 @@ jobs:
 **Alle perioder:**
 - **Gauge**: Snitt for valgt periode (dynamisk label)
 - **Linjegraf** (dual-axis): Forbruk + rullende snitt + temperatur, med dataZoom
-- **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode.
-- **Månedlig endring**: Prosentvis endring per måned vs. tilsvarende måned året før. Grønn = mindre, rød = mer.
+- **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode, grønn fyll der siste år < forrige periode. Tooltip viser prosentvis differanse. Legend: "Siste år" (cyan) og "Forrige periode" (lilla).
+- **Månedlig endring**: Prosentvis endring per måned vs. tilsvarende måned året før. Grønn = mindre, rød = mer. Labels over stolpene viser %-verdi. Tooltip: "x% mer/mindre enn året før".
 
 **Kun årsvisning (365d):**
 - **Scatter**: Temperatur vs forbruk med lineær og kvadratisk regresjon + R²
