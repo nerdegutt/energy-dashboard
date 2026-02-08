@@ -409,9 +409,15 @@ export function renderYoyChart(yoyData) {
       formatter: (params) => {
         const d = new Date(params[0].axisValue);
         const label = `${d.getDate()}.${MONTHS_SHORT[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
-        const lines = params
-          .filter((p) => p.value != null)
-          .map((p) => `${p.marker} ${p.seriesName}: ${Number(p.value).toFixed(2)} kWh`);
+        const valid = params.filter((p) => p.value != null);
+        const lines = valid.map((p) => `${p.marker} ${p.seriesName}: ${Number(p.value).toFixed(2)} kWh`);
+        const cur = valid.find((p) => p.seriesName === 'Siste år');
+        const prev = valid.find((p) => p.seriesName === 'Forrige periode');
+        if (cur && prev && prev.value > 0) {
+          const pct = ((cur.value - prev.value) / prev.value) * 100;
+          const dir = pct > 0 ? 'mer' : 'mindre';
+          lines.push(`${Math.abs(pct).toFixed(1)}% ${dir} enn året før`);
+        }
         return `${label}<br/>${lines.join('<br/>')}`;
       },
     },
@@ -483,6 +489,7 @@ export function renderYoyChart(yoyData) {
         // Rød fyll mellom linjene der siste år > forrige periode
         type: 'custom',
         silent: true,
+        tooltip: { show: false },
         renderItem: (params, api) => {
           const idx = params.dataIndex;
           if (idx === 0) return;
@@ -493,36 +500,65 @@ export function renderYoyChart(yoyData) {
           const prev1 = yoyData.previous[idx];
 
           if (cur0 == null || cur1 == null || prev0 == null || prev1 == null) return;
-          if (cur0 <= prev0 && cur1 <= prev1) return;
+          if (cur0 === prev0 && cur1 === prev1) return;
 
           const pCur0 = api.coord([idx - 1, cur0]);
           const pCur1 = api.coord([idx, cur1]);
           const pPrev0 = api.coord([idx - 1, prev0]);
           const pPrev1 = api.coord([idx, prev1]);
 
-          let points;
-          if (cur0 > prev0 && cur1 > prev1) {
-            points = [pCur0, pCur1, pPrev1, pPrev0];
+          const diff0 = cur0 - prev0;
+          const diff1 = cur1 - prev1;
+          const sameSign = (diff0 >= 0 && diff1 >= 0) || (diff0 <= 0 && diff1 <= 0);
+          const fill = diff0 + diff1 > 0
+            ? 'rgba(239, 68, 68, 0.35)'   // rød: bruker mer
+            : 'rgba(34, 197, 94, 0.25)';  // grønn: bruker mindre
+
+          const polys = [];
+          if (sameSign) {
+            polys.push({ pts: [pCur0, pCur1, pPrev1, pPrev0], fill });
           } else {
             // Linjene krysser – finn skjæringspunktet
-            const t = (cur0 - prev0) / ((cur0 - prev0) - (cur1 - prev1));
+            const t = diff0 / (diff0 - diff1);
             const midPx = [
               pCur0[0] + t * (pCur1[0] - pCur0[0]),
               pCur0[1] + t * (pCur1[1] - pCur0[1]),
             ];
-            if (cur0 > prev0) {
-              points = [pCur0, midPx, pPrev0];
-            } else {
-              points = [midPx, pCur1, pPrev1];
-            }
+            polys.push({
+              pts: diff0 > 0
+                ? [pCur0, midPx, pPrev0]
+                : [pCur0, midPx, pPrev0],
+              fill: diff0 > 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.25)',
+            });
+            polys.push({
+              pts: diff1 > 0
+                ? [midPx, pCur1, pPrev1]
+                : [midPx, pCur1, pPrev1],
+              fill: diff1 > 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.25)',
+            });
           }
 
-          return {
-            type: 'polygon',
-            shape: { points },
-            style: { fill: 'rgba(239, 68, 68, 0.35)' },
+          const anim = {
             enterFrom: { style: { opacity: 0 } },
             enterAnimation: { duration: 1000, delay: 1000, easing: 'cubicOut' },
+          };
+
+          if (polys.length === 1) {
+            return {
+              type: 'polygon',
+              shape: { points: polys[0].pts },
+              style: { fill: polys[0].fill },
+              ...anim,
+            };
+          }
+          return {
+            type: 'group',
+            children: polys.map((p) => ({
+              type: 'polygon',
+              shape: { points: p.pts },
+              style: { fill: p.fill },
+              ...anim,
+            })),
           };
         },
         data: yoyData.labels,
@@ -547,8 +583,7 @@ export function renderMonthlyChangeChart(monthlyChange) {
       formatter: (params) => {
         const p = params[0];
         const dir = p.value > 0 ? 'mer' : 'mindre';
-        const prevMonth = monthlyChange[p.dataIndex]?.prevMonth || '';
-        return `${p.name}: ${p.value > 0 ? '+' : ''}${p.value.toFixed(1)}% ${dir} enn ${prevMonth}`;
+        return `${p.name}: ${Math.abs(p.value).toFixed(1)}% ${dir} enn året før`;
       },
     },
     grid: { left: 50, right: 20, top: 40, bottom: 30 },
