@@ -205,6 +205,74 @@ export function renderLineChart(data, rollingAvg, days) {
   return chart;
 }
 
+// --- Minste kvadraters metode ---
+function linearRegression(points) {
+  const n = points.length;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (const [x, y] of points) {
+    sx += x; sy += y; sxx += x * x; sxy += x * y;
+  }
+  const b = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+  const a = (sy - b * sx) / n;
+  return { a, b }; // y = a + b*x
+}
+
+function quadraticRegression(points) {
+  const n = points.length;
+  let sx = 0, sx2 = 0, sx3 = 0, sx4 = 0, sy = 0, sxy = 0, sx2y = 0;
+  for (const [x, y] of points) {
+    const x2 = x * x;
+    sx += x; sx2 += x2; sx3 += x2 * x; sx4 += x2 * x2;
+    sy += y; sxy += x * y; sx2y += x2 * y;
+  }
+  // Løs 3x3 lineært system med Cramers regel
+  const A = [
+    [n, sx, sx2],
+    [sx, sx2, sx3],
+    [sx2, sx3, sx4],
+  ];
+  const B = [sy, sxy, sx2y];
+
+  function det3(m) {
+    return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+         - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+         + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  }
+
+  const D = det3(A);
+  const D0 = det3([
+    [B[0], A[0][1], A[0][2]],
+    [B[1], A[1][1], A[1][2]],
+    [B[2], A[2][1], A[2][2]],
+  ]);
+  const D1 = det3([
+    [A[0][0], B[0], A[0][2]],
+    [A[1][0], B[1], A[1][2]],
+    [A[2][0], B[2], A[2][2]],
+  ]);
+  const D2 = det3([
+    [A[0][0], A[0][1], B[0]],
+    [A[1][0], A[1][1], B[1]],
+    [A[2][0], A[2][1], B[2]],
+  ]);
+
+  return { a: D0 / D, b: D1 / D, c: D2 / D }; // y = a + b*x + c*x²
+}
+
+function rSquared(points, predict) {
+  const meanY = points.reduce((s, [, y]) => s + y, 0) / points.length;
+  let ssRes = 0, ssTot = 0;
+  for (const [x, y] of points) {
+    ssRes += (y - predict(x)) ** 2;
+    ssTot += (y - meanY) ** 2;
+  }
+  return 1 - ssRes / ssTot;
+}
+
+function formatCoeff(v, decimals = 4) {
+  return v >= 0 ? `+ ${v.toFixed(decimals)}` : `- ${Math.abs(v).toFixed(decimals)}`;
+}
+
 // --- Scatter: Temperatur vs forbruk ---
 export function renderScatterChart(data) {
   const chart = getOrCreate('scatter-chart');
@@ -213,13 +281,46 @@ export function renderScatterChart(data) {
     .filter((d) => d.outside_temp_c != null)
     .map((d) => [d.outside_temp_c, d.consumption_kwh]);
 
+  // Regresjoner
+  const lin = linearRegression(points);
+  const quad = quadraticRegression(points);
+  const r2Lin = rSquared(points, (x) => lin.a + lin.b * x);
+  const r2Quad = rSquared(points, (x) => quad.a + quad.b * x + quad.c * x * x);
+
+  // Generer linjer over temperaturspenn
+  const temps = points.map(([x]) => x);
+  const tMin = Math.floor(Math.min(...temps));
+  const tMax = Math.ceil(Math.max(...temps));
+  const linLine = [];
+  const quadLine = [];
+  for (let t = tMin; t <= tMax; t++) {
+    linLine.push([t, lin.a + lin.b * t]);
+    quadLine.push([t, quad.a + quad.b * t + quad.c * t * t]);
+  }
+
+  // Vis formler
+  const formulaEl = document.getElementById('regression-formulas');
+  if (formulaEl) {
+    formulaEl.innerHTML =
+      `<span style="color:#a78bfa">1. grad: kWh = ${lin.a.toFixed(4)} ${formatCoeff(lin.b)}T &nbsp; R² = ${r2Lin.toFixed(4)}</span>` +
+      `<span style="color:${ORANGE}">2. grad: kWh = ${quad.a.toFixed(4)} ${formatCoeff(quad.b)}T ${formatCoeff(quad.c)}T² &nbsp; R² = ${r2Quad.toFixed(4)}</span>`;
+  }
+
   chart.setOption({
     tooltip: {
       trigger: 'item',
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
-      formatter: (p) => `${p.value[0]}°C → ${p.value[1]} kWh`,
+      formatter: (p) => {
+        if (p.seriesIndex > 0) return `${p.value[0]}°C → ${p.value[1].toFixed(2)} kWh`;
+        return `${p.value[0]}°C → ${p.value[1]} kWh`;
+      },
+    },
+    legend: {
+      data: ['Forbruk', '1. grad', '2. grad'],
+      textStyle: baseTextStyle(),
+      top: 0,
     },
     grid: { left: 50, right: 30, top: 40, bottom: 40 },
     xAxis: {
@@ -238,12 +339,33 @@ export function renderScatterChart(data) {
       axisLabel: baseTextStyle(),
       splitLine: baseSplitLine(),
     },
-    series: [{
-      type: 'scatter',
-      data: points,
-      symbolSize: 5,
-      itemStyle: { color: CYAN, opacity: 0.6 },
-    }],
+    series: [
+      {
+        name: 'Forbruk',
+        type: 'scatter',
+        data: points,
+        symbolSize: 4,
+        itemStyle: { color: CYAN, opacity: 0.4 },
+      },
+      {
+        name: '1. grad',
+        type: 'line',
+        data: linLine,
+        smooth: false,
+        symbol: 'none',
+        lineStyle: { color: '#a78bfa', width: 2 },
+        itemStyle: { color: '#a78bfa' },
+      },
+      {
+        name: '2. grad',
+        type: 'line',
+        data: quadLine,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { color: ORANGE, width: 2 },
+        itemStyle: { color: ORANGE },
+      },
+    ],
   });
 
   return chart;
@@ -254,7 +376,9 @@ export function renderHeatmap(heatmapData) {
   const chart = getOrCreate('heatmap-chart');
 
   const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
-  const maxVal = Math.max(...heatmapData.map((d) => d[2]), 0.1);
+  const vals = heatmapData.map((d) => d[2]).filter((v) => v > 0);
+  const minVal = vals.length > 0 ? Math.min(...vals) : 0;
+  const maxVal = vals.length > 0 ? Math.max(...vals) : 0.1;
 
   chart.setOption({
     tooltip: {
@@ -279,7 +403,7 @@ export function renderHeatmap(heatmapData) {
       splitArea: { show: false },
     },
     visualMap: {
-      min: 0,
+      min: minVal,
       max: maxVal,
       calculable: false,
       orient: 'horizontal',

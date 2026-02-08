@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
-const { TibberQuery } = require('tibber-api');
+
+const TIBBER_URL = 'https://api.tibber.com/v1-beta/gql';
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,22 +15,13 @@ module.exports = async function handler(req, res) {
 
   try {
     // --- Tibber ---
-    const tibberConfig = {
-      active: true,
-      apiEndpoint: {
-        apiKey: process.env.TIBBER_API_TOKEN,
-        queryUrl: 'https://api.tibber.com/v1-beta/gql',
-      },
-    };
-    const tibberQuery = new TibberQuery(tibberConfig);
-
     const homeId = process.env.TIBBER_HOME_ID;
 
     let consumptionNodes;
     if (hours <= 744) {
-      consumptionNodes = await tibberQuery.getConsumption('HOURLY', hours, homeId);
+      consumptionNodes = await fetchTibber(homeId, `last: ${hours}`);
     } else {
-      consumptionNodes = await fetchPaginated(tibberQuery, hours, homeId);
+      consumptionNodes = await fetchPaginated(homeId, hours);
     }
 
     // Filtrer ut noder uten data
@@ -73,10 +65,14 @@ module.exports = async function handler(req, res) {
       upserted += chunk.length;
     }
 
+    const firstTs = rows[0]?.timestamp;
+    const lastTs = rows[rows.length - 1]?.timestamp;
+
     return res.status(200).json({
       message: 'OK',
       upserted,
       tempPoints: tempMap.size,
+      range: { from: firstTs, to: lastTs },
     });
   } catch (err) {
     console.error('collect error:', err);
@@ -84,7 +80,41 @@ module.exports = async function handler(req, res) {
   }
 };
 
-async function fetchPaginated(tibberQuery, totalHours, homeId) {
+async function tibberGql(query) {
+  const resp = await fetch(TIBBER_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.TIBBER_API_TOKEN}`,
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  if (!resp.ok) {
+    throw new Error(`Tibber API returned ${resp.status}: ${await resp.text()}`);
+  }
+
+  const json = await resp.json();
+  if (json.errors) {
+    throw new Error(`Tibber GraphQL error: ${json.errors[0].message}`);
+  }
+  return json.data;
+}
+
+async function fetchTibber(homeId, pagination) {
+  const data = await tibberGql(`{
+    viewer {
+      home(id: "${homeId}") {
+        consumption(resolution: HOURLY, ${pagination}) {
+          nodes { from to consumption }
+        }
+      }
+    }
+  }`);
+  return data.viewer.home.consumption.nodes;
+}
+
+async function fetchPaginated(homeId, totalHours) {
   const allNodes = [];
   let cursor = null;
   const batchSize = 744;
@@ -94,7 +124,7 @@ async function fetchPaginated(tibberQuery, totalHours, homeId) {
     const count = Math.min(remaining, batchSize);
 
     const afterClause = cursor ? `, after: "${cursor}"` : '';
-    const gql = `{
+    const data = await tibberGql(`{
       viewer {
         home(id: "${homeId}") {
           consumption(resolution: HOURLY, first: ${count}${afterClause}) {
@@ -103,18 +133,17 @@ async function fetchPaginated(tibberQuery, totalHours, homeId) {
           }
         }
       }
-    }`;
+    }`);
 
-    const result = await tibberQuery.query(gql);
-    const home = result.viewer.home;
-    const nodes = home.consumption.nodes;
+    const consumption = data.viewer.home.consumption;
+    const nodes = consumption.nodes;
 
     if (!nodes || nodes.length === 0) break;
 
     allNodes.push(...nodes);
-    cursor = home.consumption.pageInfo?.endCursor;
+    cursor = consumption.pageInfo?.endCursor;
 
-    if (!home.consumption.pageInfo?.hasNextPage) break;
+    if (!consumption.pageInfo?.hasNextPage) break;
   }
 
   return allNodes;

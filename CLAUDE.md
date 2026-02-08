@@ -20,7 +20,7 @@ Personlig strømforbruk-dashboard som henter timedata fra Tibber API, lagrer i S
 GitHub Actions (cron, :15 hver time)
     ↓
 /api/collect.js (Vercel serverless function, CommonJS)
-    ↓ henter siste 24t fra Tibber API via tibber-api-pakken (upsert, selvhelende)
+    ↓ henter siste 24t fra Tibber GraphQL API (upsert, selvhelende)
     ↓ henter temperatur fra Frost API (met.no, stasjon SN17280)
     ↓
 Supabase (PostgreSQL)
@@ -43,7 +43,7 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 │       ├── auth.js          # Supabase-klient, login/logout, session-håndtering
 │       ├── data.js          # Hent data fra Supabase, cache, beregninger
 │       └── charts.js        # Alle 5 ECharts-konfigurasjoner og rendering
-├── package.json             # Avhengigheter: @supabase/supabase-js, tibber-api
+├── package.json             # Avhengighet: @supabase/supabase-js
 ├── vercel.json              # Vercel-konfigurasjon (maxDuration: 60 for collect)
 ├── .github/
 │   └── workflows/
@@ -57,7 +57,7 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 - **Runtime**: Vercel serverless functions (Node.js)
 - **Database**: Supabase (PostgreSQL) – free tier
 - **Auth**: Supabase Auth med e-post/passord
-- **Tibber**: `tibber-api@^5` npm-pakke (wrapper rundt GraphQL API)
+- **Tibber**: Direkte GraphQL-kall med native fetch (ingen npm-pakke)
 - **Grafer**: ECharts (via CDN)
 - **Styling**: Tailwind CSS (via CDN)
 - **Cron**: GitHub Actions (kjører :15 over hver time)
@@ -112,11 +112,11 @@ FROST_CLIENT_ID=            # Fra frost.met.no
 - Returner 401 hvis mismatch
 
 ### Tibber API
-- Bruker `tibber-api` npm-pakken (`TibberQuery`)
+- Direkte GraphQL-kall med native fetch mot `https://api.tibber.com/v1-beta/gql`
 - Henter for spesifikt hjem via `TIBBER_HOME_ID`
-- Default: hent siste 24 timer via `getConsumption('HOURLY', 24, homeId)`
+- Default: hent siste 24 timer (`last: 24`)
 - Støtter `?hours=N` query parameter for backfill
-- For hours > 744: paginerer med rå GraphQL (`first`/`after`) via `home(id: "...")`
+- For hours > 744: paginerer med `first`/`after` i batches à 744
 
 ### Frost API (met.no)
 - Endepunkt: `https://frost.met.no/observations/v0.jsonld`
@@ -230,7 +230,7 @@ curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000" 
 
 - `api/collect.js` er CommonJS (Vercel default uten framework)
 - Frontend-JS er ES modules (`<script type="module">`)
-- Tibber API aksesseres via `tibber-api` npm-pakke, ikke rå GraphQL
+- Tibber API aksesseres via direkte GraphQL-kall med native fetch
 - Frost API bruker Basic auth (client_id som brukernavn, tomt passord) og krever User-Agent header
 - Supabase anon key er trygg å eksponere i frontend – sikkerhet styres av RLS
 - Supabase service key brukes KUN i `api/collect.js`, aldri i frontend
