@@ -616,7 +616,7 @@ export function renderHeatmap(heatmapData) {
       textStyle: baseTextStyle(),
       formatter: (p) => `${WEEKDAYS[p.value[1]]} ${hours[p.value[0]]}<br/>${p.value[2].toFixed(2)} kWh`,
     },
-    grid: { left: 50, right: 30, top: 10, bottom: 40 },
+    grid: { left: 50, right: 30, top: 10, bottom: 60 },
     xAxis: {
       type: 'category',
       data: hours,
@@ -667,7 +667,7 @@ export function renderWeekdayChart(weekdayData) {
       textStyle: baseTextStyle(),
       formatter: (p) => `${p[0].name}: ${p[0].value.toFixed(2)} kWh`,
     },
-    grid: { left: 50, right: 20, top: 20, bottom: 30 },
+    grid: { left: 50, right: 20, top: 30, bottom: 30 },
     xAxis: {
       type: 'category',
       data: weekdayData.map((d) => d.day),
