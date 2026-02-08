@@ -42,7 +42,7 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 │       ├── app.js           # Entry point: auth, periodevelger, orkestrering
 │       ├── auth.js          # Supabase-klient, login/logout, session-håndtering
 │       ├── data.js          # Hent data fra Supabase, cache, beregninger
-│       └── charts.js        # Alle 5 ECharts-konfigurasjoner og rendering
+│       └── charts.js        # Alle 7 ECharts-konfigurasjoner og rendering
 ├── package.json             # Avhengighet: @supabase/supabase-js
 ├── vercel.json              # Vercel-konfigurasjon (maxDuration: 60 for collect)
 ├── .github/
@@ -58,6 +58,7 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 - **Database**: Supabase (PostgreSQL) – free tier
 - **Auth**: Supabase Auth med e-post/passord
 - **Tibber**: Direkte GraphQL-kall med native fetch (ingen npm-pakke)
+- **Temperatur**: Frost API (met.no, stasjon SN17280)
 - **Grafer**: ECharts (via CDN)
 - **Styling**: Tailwind CSS (via CDN)
 - **Cron**: GitHub Actions (kjører :15 over hver time)
