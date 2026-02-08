@@ -5,6 +5,7 @@ const GRID_LINE = 'rgba(255,255,255,0.05)';
 const AXIS_LINE = '#333';
 const FONT = 'JetBrains Mono, monospace';
 const WEEKDAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
+const MONTHS_SHORT = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des'];
 
 const instances = {};
 
@@ -30,15 +31,16 @@ function baseSplitLine() {
   return { lineStyle: { color: GRID_LINE } };
 }
 
-// --- Gauge: Snitt siste 24t ---
-export function renderGauge(data) {
+// --- Gauge: Snitt for valgt periode ---
+export function renderGauge(data, days) {
   const chart = getOrCreate('gauge-chart');
 
-  // Beregn snitt av siste 24 datapunkter (eller alle hvis færre)
-  const recent = data.slice(-24);
-  const avg = recent.length > 0
-    ? recent.reduce((s, d) => s + d.consumption_kwh, 0) / recent.length
+  const valid = data.filter((d) => d.consumption_kwh != null);
+  const avg = valid.length > 0
+    ? valid.reduce((s, d) => s + d.consumption_kwh, 0) / valid.length
     : 0;
+
+  const periodLabel = days >= 365 ? 'snitt 1 år' : days >= 28 ? 'snitt 28d' : days >= 7 ? 'snitt 7d' : 'snitt 24t';
 
   chart.setOption({
     series: [{
@@ -75,7 +77,7 @@ export function renderGauge(data) {
         fontFamily: FONT,
         color: TEXT,
       },
-      data: [{ value: +avg.toFixed(2), name: 'snitt 24t' }],
+      data: [{ value: +avg.toFixed(2), name: periodLabel }],
     }],
   });
 
@@ -91,12 +93,11 @@ export function renderLineChart(data, rollingAvg, days) {
   const rolling = rollingAvg.map((d) => d.value);
   const temperature = data.map((d) => d.outside_temp_c);
 
-  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des'];
   const labelFormatter = (v) => {
     const d = new Date(v);
-    if (days >= 365) return MONTHS[d.getMonth()];
-    if (days >= 30) return `${d.getDate()}.${d.getMonth() + 1}`;
-    return `${String(d.getHours()).padStart(2, '0')}`;
+    if (days >= 365) return `${MONTHS_SHORT[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
+    if (days >= 7) return `${d.getDate()}. ${MONTHS_SHORT[d.getMonth()]}`;
+    return `${String(d.getHours()).padStart(2, '0')}:00`;
   };
 
   const tooltipFormatter = (params) => {
@@ -104,7 +105,7 @@ export function renderLineChart(data, rollingAvg, days) {
     const d = new Date(ts);
     let label;
     if (days >= 365) label = `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
-    else if (days >= 30) label = `${d.getDate()}.${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:00`;
+    else if (days >= 28) label = `${d.getDate()}.${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:00`;
     else label = `${d.getDate()}.${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:00`;
     const lines = params.map((p) => {
       const unit = p.seriesName === 'Temperatur' ? '°C' : 'kWh';
@@ -134,6 +135,23 @@ export function renderLineChart(data, rollingAvg, days) {
       axisLabel: {
         ...baseTextStyle(),
         formatter: labelFormatter,
+        interval: (idx, val) => {
+          const d = new Date(val);
+          if (days >= 365) return d.getDate() === 1;
+          if (days >= 28) return d.getHours() === 0 && d.getDay() === 1;
+          if (days >= 7) return d.getHours() === 0;
+          return d.getHours() % 3 === 0;
+        },
+      },
+      axisTick: {
+        alignWithLabel: true,
+        interval: (idx, val) => {
+          const d = new Date(val);
+          if (days >= 365) return d.getDate() === 1;
+          if (days >= 28) return d.getHours() === 0 && d.getDay() === 1;
+          if (days >= 7) return d.getHours() === 0;
+          return d.getHours() % 3 === 0;
+        },
       },
       splitLine: { show: false },
     },
@@ -172,6 +190,7 @@ export function renderLineChart(data, rollingAvg, days) {
         data: consumption,
         smooth: true,
         symbol: 'none',
+        itemStyle: { color: CYAN },
         lineStyle: { color: CYAN, width: 1.5 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -278,7 +297,7 @@ export function renderScatterChart(data) {
   const chart = getOrCreate('scatter-chart');
 
   const points = data
-    .filter((d) => d.outside_temp_c != null)
+    .filter((d) => d.outside_temp_c != null && d.consumption_kwh != null)
     .map((d) => [d.outside_temp_c, d.consumption_kwh]);
 
   // Regresjoner
@@ -314,7 +333,7 @@ export function renderScatterChart(data) {
       textStyle: baseTextStyle(),
       formatter: (p) => {
         if (p.seriesIndex > 0) return `${p.value[0]}°C → ${p.value[1].toFixed(2)} kWh`;
-        return `${p.value[0]}°C → ${p.value[1]} kWh`;
+        return `${p.value[0].toFixed(2)}°C → ${p.value[1].toFixed(2)} kWh`;
       },
     },
     legend: {
@@ -344,7 +363,7 @@ export function renderScatterChart(data) {
         name: 'Forbruk',
         type: 'scatter',
         data: points,
-        symbolSize: 4,
+        symbolSize: 7,
         itemStyle: { color: CYAN, opacity: 0.4 },
       },
       {
@@ -366,6 +385,216 @@ export function renderScatterChart(data) {
         itemStyle: { color: ORANGE },
       },
     ],
+  });
+
+  return chart;
+}
+
+// --- År-over-år sammenligning (28d rullende snitt) ---
+export function renderYoyChart(yoyData) {
+  const chart = getOrCreate('yoy-chart');
+
+  // Labels er YYYY-MM-DD, vis "mnd år" på 1. i hver måned
+  const labelFormatter = (v) => {
+    const d = new Date(v);
+    return `${MONTHS_SHORT[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
+  };
+
+  chart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1a1a2e',
+      borderColor: '#333',
+      textStyle: baseTextStyle(),
+      formatter: (params) => {
+        const d = new Date(params[0].axisValue);
+        const label = `${d.getDate()}.${MONTHS_SHORT[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
+        const lines = params
+          .filter((p) => p.value != null)
+          .map((p) => `${p.marker} ${p.seriesName}: ${Number(p.value).toFixed(2)} kWh`);
+        return `${label}<br/>${lines.join('<br/>')}`;
+      },
+    },
+    legend: {
+      data: ['Siste år', 'Forrige periode'],
+      textStyle: baseTextStyle(),
+      top: 0,
+    },
+    grid: { left: 50, right: 20, top: 40, bottom: 70 },
+    xAxis: {
+      type: 'category',
+      data: yoyData.labels,
+      axisLine: baseAxisLine(),
+      axisLabel: {
+        ...baseTextStyle(),
+        formatter: labelFormatter,
+        interval: (idx, val) => parseInt(val.split('-')[2]) === 1,
+      },
+      axisTick: {
+        alignWithLabel: true,
+        interval: (idx, val) => parseInt(val.split('-')[2]) === 1,
+      },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'kWh (28d snitt)',
+      nameTextStyle: baseTextStyle(),
+      axisLine: baseAxisLine(),
+      axisLabel: baseTextStyle(),
+      splitLine: baseSplitLine(),
+    },
+    dataZoom: [{
+      type: 'slider',
+      height: 20,
+      bottom: 10,
+      borderColor: '#333',
+      backgroundColor: '#1a1a2e',
+      fillerColor: 'rgba(34, 211, 238, 0.1)',
+      handleStyle: { color: CYAN },
+      textStyle: baseTextStyle(),
+    }],
+    series: [
+      {
+        name: 'Siste år',
+        type: 'line',
+        data: yoyData.current,
+        smooth: true,
+        symbol: 'none',
+        itemStyle: { color: CYAN },
+        lineStyle: { color: CYAN, width: 2 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(34, 211, 238, 0.35)' },
+            { offset: 1, color: 'rgba(34, 211, 238, 0.03)' },
+          ]),
+        },
+      },
+      {
+        name: 'Forrige periode',
+        type: 'line',
+        data: yoyData.previous,
+        smooth: true,
+        symbol: 'none',
+        itemStyle: { color: '#a78bfa' },
+        lineStyle: { color: '#a78bfa', width: 2, opacity: 0.7 },
+      },
+      {
+        // Rød fyll mellom linjene der siste år > forrige periode
+        type: 'custom',
+        silent: true,
+        renderItem: (params, api) => {
+          const idx = params.dataIndex;
+          if (idx === 0) return;
+
+          const cur0 = yoyData.current[idx - 1];
+          const cur1 = yoyData.current[idx];
+          const prev0 = yoyData.previous[idx - 1];
+          const prev1 = yoyData.previous[idx];
+
+          if (cur0 == null || cur1 == null || prev0 == null || prev1 == null) return;
+          if (cur0 <= prev0 && cur1 <= prev1) return;
+
+          const pCur0 = api.coord([idx - 1, cur0]);
+          const pCur1 = api.coord([idx, cur1]);
+          const pPrev0 = api.coord([idx - 1, prev0]);
+          const pPrev1 = api.coord([idx, prev1]);
+
+          let points;
+          if (cur0 > prev0 && cur1 > prev1) {
+            points = [pCur0, pCur1, pPrev1, pPrev0];
+          } else {
+            // Linjene krysser – finn skjæringspunktet
+            const t = (cur0 - prev0) / ((cur0 - prev0) - (cur1 - prev1));
+            const midPx = [
+              pCur0[0] + t * (pCur1[0] - pCur0[0]),
+              pCur0[1] + t * (pCur1[1] - pCur0[1]),
+            ];
+            if (cur0 > prev0) {
+              points = [pCur0, midPx, pPrev0];
+            } else {
+              points = [midPx, pCur1, pPrev1];
+            }
+          }
+
+          return {
+            type: 'polygon',
+            shape: { points },
+            style: { fill: 'rgba(239, 68, 68, 0.35)' },
+            enterFrom: { style: { opacity: 0 } },
+            enterAnimation: { duration: 1000, delay: 1000, easing: 'cubicOut' },
+          };
+        },
+        data: yoyData.labels,
+        z: 0,
+      },
+    ],
+  });
+
+  return chart;
+}
+
+// --- Prosentvis endring per måned ---
+export function renderMonthlyChangeChart(monthlyChange) {
+  const chart = getOrCreate('monthly-change-chart');
+
+  chart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1a1a2e',
+      borderColor: '#333',
+      textStyle: baseTextStyle(),
+      formatter: (params) => {
+        const p = params[0];
+        const dir = p.value > 0 ? 'mer' : 'mindre';
+        const prevMonth = monthlyChange[p.dataIndex]?.prevMonth || '';
+        return `${p.name}: ${p.value > 0 ? '+' : ''}${p.value.toFixed(1)}% ${dir} enn ${prevMonth}`;
+      },
+    },
+    grid: { left: 50, right: 20, top: 40, bottom: 30 },
+    xAxis: {
+      type: 'category',
+      data: monthlyChange.map((d) => d.month),
+      axisLine: baseAxisLine(),
+      axisLabel: baseTextStyle(),
+    },
+    yAxis: {
+      type: 'value',
+      name: '%',
+      nameTextStyle: baseTextStyle(),
+      axisLine: baseAxisLine(),
+      axisLabel: {
+        ...baseTextStyle(),
+        formatter: (v) => `${v > 0 ? '+' : ''}${v}%`,
+      },
+      splitLine: baseSplitLine(),
+    },
+    series: [{
+      type: 'bar',
+      data: monthlyChange.map((d) => ({
+        value: +d.pct.toFixed(1),
+        itemStyle: {
+          color: d.pct <= 0
+            ? new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: 'rgba(34, 197, 94, 0.8)' },
+                { offset: 1, color: 'rgba(34, 197, 94, 0.3)' },
+              ])
+            : new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: 'rgba(239, 68, 68, 0.8)' },
+                { offset: 1, color: 'rgba(239, 68, 68, 0.3)' },
+              ]),
+          borderRadius: d.pct <= 0 ? [0, 0, 3, 3] : [3, 3, 0, 0],
+        },
+      })),
+      barMaxWidth: 40,
+      label: {
+        show: true,
+        position: 'top',
+        formatter: (p) => `${p.value > 0 ? '+' : ''}${p.value}%`,
+        ...baseTextStyle(),
+        fontSize: 10,
+      },
+    }],
   });
 
   return chart;

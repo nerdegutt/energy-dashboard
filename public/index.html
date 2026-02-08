@@ -63,8 +63,9 @@
       <h1 class="text-lg text-[#22d3ee] font-semibold tracking-wide">Strømforbruk</h1>
       <div class="flex items-center gap-4">
         <div id="period-selector" class="flex gap-1">
-          <button class="period-btn active text-xs px-3 py-1 rounded border border-[#333]" data-days="7">7d</button>
-          <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="30">30d</button>
+          <button class="period-btn active text-xs px-3 py-1 rounded border border-[#333]" data-days="1">24t</button>
+          <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="7">7d</button>
+          <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="28">28d</button>
           <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="365">1y</button>
         </div>
         <button id="refresh-btn" class="text-xs text-[#666] hover:text-[#a0a0b0] transition" title="Hent ferske data">&#x21bb;</button>
@@ -98,7 +99,17 @@
         <div id="regression-formulas" class="text-xs mt-2 flex gap-6"></div>
       </div>
 
-      <!-- Rad 3: Heatmap -->
+      <!-- Rad 3: År-over-år sammenligning -->
+      <div class="panel rounded-lg p-4">
+        <div id="yoy-chart" style="height: 350px;"></div>
+      </div>
+
+      <!-- Rad 4: Prosentvis endring per måned -->
+      <div class="panel rounded-lg p-4">
+        <div id="monthly-change-chart" style="height: 280px;"></div>
+      </div>
+
+      <!-- Rad 5: Heatmap -->
       <div class="panel rounded-lg p-4">
         <div id="heatmap-chart" style="height: 300px;"></div>
       </div>

@@ -1,9 +1,11 @@
 import { sb, getSession, signIn, signOut } from './auth.js';
-import { fetchData, clearCache, rollingAverage, dailyAverage, avgByWeekday, heatmapData } from './data.js';
+import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData } from './data.js';
 import {
   renderGauge,
   renderLineChart,
   renderScatterChart,
+  renderYoyChart,
+  renderMonthlyChangeChart,
   renderHeatmap,
   renderWeekdayChart,
   handleResize,
@@ -19,7 +21,7 @@ const loginError = document.getElementById('login-error');
 const logoutBtn = document.getElementById('logout-btn');
 const periodSelector = document.getElementById('period-selector');
 
-let currentDays = 7;
+let currentDays = 1;
 
 // --- Auth ---
 loginForm.addEventListener('submit', async (e) => {
@@ -91,16 +93,44 @@ async function loadData(days) {
     loading.classList.add('hidden');
     chartsContainer.classList.remove('hidden');
 
-    const chartData = days >= 365 ? dailyAverage(data) : data;
+    const filled = days < 365 ? fillMissingHours(data, days) : data;
+    const chartData = days >= 365 ? dailyAverage(data) : filled;
     const rolling = rollingAverage(chartData, days >= 365 ? 7 : 24);
     const weekday = avgByWeekday(data);
     const heatmap = heatmapData(data);
 
-    renderGauge(data);
+    // YoY: alltid fullt år, uavhengig av valgt periode
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    const yoyDays = Math.ceil((Date.now() - twoYearsAgo.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const yoyData = await fetchData(yoyDays);
+    const yoy = yearOverYear(yoyData, 365);
+
+    renderGauge(data, days);
     renderLineChart(chartData, rolling, days);
-    renderScatterChart(chartData);
-    renderHeatmap(heatmap);
-    renderWeekdayChart(weekday);
+
+    const scatterPanel = document.getElementById('scatter-chart').closest('.panel');
+    if (days >= 365) {
+      scatterPanel.classList.remove('hidden');
+      renderScatterChart(chartData);
+    } else {
+      scatterPanel.classList.add('hidden');
+    }
+
+    renderYoyChart(yoy);
+    renderMonthlyChangeChart(yoy.monthlyChange);
+
+    const heatmapPanel = document.getElementById('heatmap-chart').closest('.panel');
+    const weekdayPanel = document.getElementById('weekday-chart').closest('.panel');
+    if (days >= 365) {
+      heatmapPanel.classList.remove('hidden');
+      weekdayPanel.classList.remove('hidden');
+      renderHeatmap(heatmap);
+      renderWeekdayChart(weekday);
+    } else {
+      heatmapPanel.classList.add('hidden');
+      weekdayPanel.classList.add('hidden');
+    }
   } catch (err) {
     console.error('Failed to load data:', err);
     loading.textContent = 'Feil ved lasting av data.';

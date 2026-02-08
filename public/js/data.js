@@ -57,16 +57,47 @@ export async function fetchData(days) {
   return all;
 }
 
+export function fillMissingHours(data, days) {
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  const start = new Date(now);
+  start.setDate(start.getDate() - days);
+
+  const lookup = new Map();
+  for (const d of data) {
+    const key = d.timestamp.slice(0, 13); // "YYYY-MM-DDTHH"
+    lookup.set(key, d);
+  }
+
+  const result = [];
+  const cursor = new Date(start);
+  while (cursor <= now) {
+    const key = cursor.toISOString().slice(0, 13);
+    if (lookup.has(key)) {
+      result.push(lookup.get(key));
+    } else {
+      result.push({
+        timestamp: cursor.toISOString(),
+        consumption_kwh: null,
+        outside_temp_c: null,
+      });
+    }
+    cursor.setHours(cursor.getHours() + 1);
+  }
+  return result;
+}
+
 export function rollingAverage(data, windowSize = 24) {
   const result = [];
   for (let i = 0; i < data.length; i++) {
     const start = Math.max(0, i - windowSize + 1);
-    const window = data.slice(start, i + 1);
-    const sum = window.reduce((s, d) => s + d.consumption_kwh, 0);
-    result.push({
-      timestamp: data[i].timestamp,
-      value: sum / window.length,
-    });
+    const window = data.slice(start, i + 1).filter((d) => d.consumption_kwh != null);
+    if (window.length === 0) {
+      result.push({ timestamp: data[i].timestamp, value: null });
+    } else {
+      const sum = window.reduce((s, d) => s + d.consumption_kwh, 0);
+      result.push({ timestamp: data[i].timestamp, value: sum / window.length });
+    }
   }
   return result;
 }
@@ -80,14 +111,133 @@ export function dailyAverage(data) {
     buckets.get(day).push(d);
   }
 
-  return [...buckets.entries()].map(([day, rows]) => ({
-    timestamp: day + 'T12:00:00',
-    consumption_kwh: rows.reduce((s, r) => s + r.consumption_kwh, 0) / rows.length,
-    outside_temp_c: rows.some((r) => r.outside_temp_c != null)
-      ? rows.filter((r) => r.outside_temp_c != null).reduce((s, r) => s + r.outside_temp_c, 0) /
-        rows.filter((r) => r.outside_temp_c != null).length
-      : null,
-  }));
+  return [...buckets.entries()].map(([day, rows]) => {
+    const validKwh = rows.filter((r) => r.consumption_kwh != null);
+    const validTemp = rows.filter((r) => r.outside_temp_c != null);
+    return {
+      timestamp: day + 'T12:00:00',
+      consumption_kwh: validKwh.length > 0
+        ? validKwh.reduce((s, r) => s + r.consumption_kwh, 0) / validKwh.length
+        : null,
+      outside_temp_c: validTemp.length > 0
+        ? validTemp.reduce((s, r) => s + r.outside_temp_c, 0) / validTemp.length
+        : null,
+    };
+  });
+}
+
+export function yearOverYear(data, days) {
+  const now = new Date();
+  const periodStart = new Date(now);
+  periodStart.setDate(periodStart.getDate() - days);
+
+  // Forrige periode: nøyaktig 1 år tilbake (håndterer skuddår)
+  const prevEnd = new Date(now);
+  prevEnd.setFullYear(prevEnd.getFullYear() - 1);
+  const prevStart = new Date(periodStart);
+  prevStart.setFullYear(prevStart.getFullYear() - 1);
+
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des'];
+  const fmtDate = (d) => `${d.getDate()}.${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
+  const fmtRange = (from, to) => `${fmtDate(from)} – ${fmtDate(to)}`;
+
+  const current = data.filter((d) => {
+    const t = new Date(d.timestamp);
+    return t >= periodStart && t <= now;
+  });
+  const previous = data.filter((d) => {
+    const t = new Date(d.timestamp);
+    return t >= prevStart && t < prevEnd;
+  });
+
+  const avg = (arr) => arr && arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
+
+  // Grupper per dato (YYYY-MM-DD) → dagsnitt
+  const toDailyMap = (rows) => {
+    const buckets = new Map();
+    for (const r of rows) {
+      if (r.consumption_kwh == null) continue;
+      const day = r.timestamp.slice(0, 10);
+      if (!buckets.has(day)) buckets.set(day, []);
+      buckets.get(day).push(r.consumption_kwh);
+    }
+    const result = new Map();
+    for (const [day, vals] of buckets) {
+      result.set(day, vals.reduce((s, v) => s + v, 0) / vals.length);
+    }
+    return result;
+  };
+
+  const currentDaily = toDailyMap(current);
+  const previousDaily = toDailyMap(previous);
+
+  // Kronologisk liste av datoer i nåværende periode (nå helt til høyre)
+  const currentDates = [...currentDaily.keys()].sort();
+
+  const labels = [];
+  const currentVals = [];
+  const previousVals = [];
+
+  for (const dateStr of currentDates) {
+    labels.push(dateStr); // YYYY-MM-DD sorterer kronologisk
+    currentVals.push(currentDaily.get(dateStr) ?? null);
+    // Finn tilsvarende dato 1 år tilbake
+    const d = new Date(dateStr);
+    d.setFullYear(d.getFullYear() - 1);
+    const prevDateStr = d.toISOString().slice(0, 10);
+    previousVals.push(previousDaily.get(prevDateStr) ?? null);
+  }
+
+  // 28-dagers rullende snitt
+  const rolling = (vals) => {
+    const w = 28;
+    return vals.map((_, i) => {
+      const start = Math.max(0, i - w + 1);
+      const window = vals.slice(start, i + 1).filter((v) => v != null);
+      return window.length > 0 ? window.reduce((s, v) => s + v, 0) / window.length : null;
+    });
+  };
+
+  // Prosentvis endring per måned (med årstall for korrekt matching)
+  const monthlyChange = () => {
+    const bucket = (rows) => {
+      const m = {};
+      for (const r of rows) {
+        if (r.consumption_kwh == null) continue;
+        const d = new Date(r.timestamp);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (!m[key]) m[key] = [];
+        m[key].push(r.consumption_kwh);
+      }
+      return m;
+    };
+    const curMonths = bucket(current);
+    const prevMonths = bucket(previous);
+
+    // Kronologisk sorterte år-måneder fra current
+    const curKeys = Object.keys(curMonths).sort();
+
+    return curKeys.map((key) => {
+      const [y, m] = key.split('-').map(Number);
+      const prevKey = `${y - 1}-${String(m).padStart(2, '0')}`;
+      const curAvg = avg(curMonths[key]);
+      const prevAvg = avg(prevMonths[prevKey]);
+      const prevLabel = `${MONTHS[m - 1]} ${String(y - 1).slice(2)}`;
+      if (curAvg == null || prevAvg == null || prevAvg === 0) {
+        return { month: `${MONTHS[m - 1]} ${String(y).slice(2)}`, prevMonth: prevLabel, pct: null };
+      }
+      return { month: `${MONTHS[m - 1]} ${String(y).slice(2)}`, prevMonth: prevLabel, pct: ((curAvg - prevAvg) / prevAvg) * 100 };
+    }).filter((d) => d.pct != null);
+  };
+
+  return {
+    labels,
+    current: rolling(currentVals),
+    previous: rolling(previousVals),
+    monthlyChange: monthlyChange(),
+    currentLabel: fmtRange(periodStart, now),
+    previousLabel: fmtRange(prevStart, prevEnd),
+  };
 }
 
 export function avgByWeekday(data) {
@@ -95,6 +245,7 @@ export function avgByWeekday(data) {
   const buckets = Array.from({ length: 7 }, () => []);
 
   for (const d of data) {
+    if (d.consumption_kwh == null) continue;
     const day = new Date(d.timestamp).getDay();
     buckets[day].push(d.consumption_kwh);
   }
@@ -114,6 +265,7 @@ export function heatmapData(data) {
   const buckets = {};
 
   for (const d of data) {
+    if (d.consumption_kwh == null) continue;
     const dt = new Date(d.timestamp);
     let day = dt.getDay() - 1; // 0=man, 6=søn
     if (day < 0) day = 6;

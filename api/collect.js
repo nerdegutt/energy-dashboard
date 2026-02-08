@@ -24,13 +24,11 @@ module.exports = async function handler(req, res) {
       consumptionNodes = await fetchPaginated(homeId, hours);
     }
 
-    // Filtrer ut noder uten data
-    consumptionNodes = consumptionNodes.filter(
-      (n) => n && n.from && n.consumption != null
-    );
+    // Filtrer ut noder uten timestamp
+    consumptionNodes = consumptionNodes.filter((n) => n && n.from);
 
     if (consumptionNodes.length === 0) {
-      return res.status(200).json({ message: 'No consumption data returned', upserted: 0 });
+      return res.status(200).json({ message: 'No data returned', upserted: 0 });
     }
 
     // --- Frost (temperatur) ---
@@ -48,7 +46,7 @@ module.exports = async function handler(req, res) {
       const hourKey = ts.slice(0, 13); // "YYYY-MM-DDTHH"
       rowMap.set(ts, {
         timestamp: ts,
-        consumption_kwh: n.consumption,
+        consumption_kwh: n.consumption ?? null,
         outside_temp_c: tempMap.get(hourKey) ?? null,
       });
     }

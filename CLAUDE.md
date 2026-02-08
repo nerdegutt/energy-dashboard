@@ -9,7 +9,7 @@ Personlig strømforbruk-dashboard som henter timedata fra Tibber API, lagrer i S
 ## Utvikling
 
 - **Ingen build step, ingen bundler, ingen React/Next.js** – ren HTML + vanilla JS (ES modules) + Vercel serverless functions (CommonJS)
-- Lokal utvikling: `vercel dev` (krever Vercel CLI og `.env`-fil med alle variabler fra Environment Variables-seksjonen)
+- Lokal utvikling: `vercel dev` (krever Vercel CLI og `.env.local`-fil med alle variabler fra Environment Variables-seksjonen)
 - Deploy: push til `main` → Vercel bygger automatisk
 - Manuell datainnsamling: `curl -X POST http://localhost:3000/api/collect -H "x-cron-secret: <din-nøkkel>"`
 - Ingen tester, ingen linter konfigurert
@@ -70,10 +70,12 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 ```sql
 CREATE TABLE consumption (
   timestamp TIMESTAMPTZ PRIMARY KEY,
-  consumption_kwh NUMERIC NOT NULL,
+  consumption_kwh NUMERIC,
   outside_temp_c NUMERIC
 );
 ```
+
+- `consumption_kwh` tillater NULL (Tibber returnerer null for nylige timer som ikke er aggregert ennå)
 
 ### RLS
 
@@ -165,33 +167,51 @@ jobs:
 ### Data-henting og cache
 - Frontend spør Supabase direkte (ingen `/api/data.js`-rute)
 - Paginerer i batches à 1000 rader (Supabase default-limit)
-- **localStorage-cache** med 1 times TTL per periode (7d/30d/365d)
+- **localStorage-cache** med 1 times TTL per periode
 - Refresh-knapp tømmer cache og henter ferske data
+- **Manglende timer fylles inn** med null-verdier (`fillMissingHours`) for komplett tidsrekke
+- Alle beregninger (snitt, heatmap, weekday) filtrerer bort null-verdier
 
 ### Periodevelger og aggregering
-- **7d**: Timedata, x-akse viser hele timer, 24t rullende snitt
-- **30d**: Timedata, x-akse viser datoer, 24t rullende snitt
-- **1y**: Daglige snitt (aggregert client-side), x-akse viser måneder, 7d rullende snitt
+- **24t**: Timedata, x-akse viser klokkeslett (hver 3. time), ingen rullende snitt
+- **7d**: Timedata, x-akse viser datoer (hver dag), 24t rullende snitt
+- **28d**: Timedata, x-akse viser datoer (hver mandag), 24t rullende snitt
+- **1y**: Daglige snitt (aggregert client-side), x-akse viser "mnd år" (1. i hver mnd), 7d rullende snitt
+
+### Grafer
+
+**Alle perioder:**
+- **Gauge**: Snitt for valgt periode (dynamisk label)
+- **Linjegraf** (dual-axis): Forbruk + rullende snitt + temperatur, med dataZoom
+- **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode.
+- **Månedlig endring**: Prosentvis endring per måned vs. tilsvarende måned året før. Grønn = mindre, rød = mer.
+
+**Kun årsvisning (365d):**
+- **Scatter**: Temperatur vs forbruk med lineær og kvadratisk regresjon + R²
+- **Heatmap**: Ukedag × klokketime
+- **Snitt per ukedag**: Bar chart man–søn
 
 ### Dashboard-layout
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  Strømforbruk              [7d 30d 1y] [↻] [Logg ut] │
-├──────────┬───────────────────────────────────────────┤
-│          │                                           │
-│  GAUGE   │  Linjegraf (dual-axis)                    │
-│  snitt   │  - Forbruk (cyan) + rullende snitt (lilla)│
-│  24t     │  - Temperatur (oransje, høyre y-akse)     │
-│          │  [════════ dataZoom ══════════]            │
-│          │                                           │
-├──────────┴───────────────────────────────────────────┤
-│  Temperatur vs forbruk (scatter)                     │
-├──────────────────────────────────────────────────────┤
-│  Heatmap: ukedag × klokketime                       │
-├──────────────────────────────────────────────────────┤
-│  Snitt per ukedag (bar chart)                        │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Strømforbruk           [24t 7d 28d 1y] [↻] [Logg ut]   │
+├──────────┬───────────────────────────────────────────────┤
+│  GAUGE   │  Linjegraf (dual-axis)                        │
+│  snitt   │  - Forbruk (cyan) + rullende snitt (lilla)    │
+│  periode │  - Temperatur (oransje, høyre y-akse)         │
+│          │  [════════ dataZoom ══════════]                │
+├──────────┴───────────────────────────────────────────────┤
+│  Temperatur vs forbruk (scatter) [kun 1y]                │
+├──────────────────────────────────────────────────────────┤
+│  År-over-år sammenligning (28d rullende snitt)           │
+├──────────────────────────────────────────────────────────┤
+│  Månedlig endring vs. forrige år (bar chart)             │
+├──────────────────────────────────────────────────────────┤
+│  Heatmap: ukedag × klokketime [kun 1y]                   │
+├──────────────────────────────────────────────────────────┤
+│  Snitt per ukedag (bar chart) [kun 1y]                   │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### Grafana-inspirert tema
@@ -207,10 +227,12 @@ jobs:
 
 ### Client-side beregninger (data.js)
 
-- **Rullende snitt**: sliding window (24 timer eller 7 dager)
-- **Daglig snitt**: aggregering per dato for årsvisning
-- **Snitt per ukedag**: grupper på `getDay()`, rekkefølge man–søn
-- **Heatmap-data**: kryss av ukedag (man=0) × klokketime med snittverdi
+- **`fillMissingHours`**: Fyller inn manglende timer med null-verdier for komplett tidsrekke
+- **`rollingAverage`**: Sliding window (24 timer eller 7 dager), filtrerer null
+- **`dailyAverage`**: Aggregering per dato for årsvisning, filtrerer null
+- **`yearOverYear`**: Sammenligner siste år med 1 år tilbake (dato-for-dato via `setFullYear`), 28d rullende snitt, månedlig prosentvis endring
+- **`avgByWeekday`**: Grupper på `getDay()`, rekkefølge man–søn, filtrerer null
+- **`heatmapData`**: Kryss av ukedag (man=0) × klokketime med snittverdi, filtrerer null
 
 ## Backfill (initial datainnhenting)
 
@@ -237,3 +259,6 @@ curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000" 
 - Vercel free tier (Hobby) er tilstrekkelig – cron håndteres av GitHub Actions
 - Supabase free tier holder i årevis med denne datamengden (~8760 rader/år)
 - GitHub Actions cron er ikke presis (5-15 min forsinkelse), men irrelevant for timedata
+- `vercel dev` leser `.env.local` (ikke `.env`) – bruk `vercel env pull` eller opprett manuelt
+- Collect lagrer rader med null consumption (Tibber returnerer null for nylige timer) – temperaturdata bevares
+- Alle client-side beregninger håndterer null-verdier i consumption_kwh
