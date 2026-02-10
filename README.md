@@ -2,37 +2,55 @@
 
 Personlig dashboard for strømforbruk. Henter timedata fra [Tibber](https://tibber.com/) og utetemperatur fra [Frost API](https://frost.met.no/) (met.no), lagrer alt i [Supabase](https://supabase.com/) (PostgreSQL), og visualiserer med [ECharts](https://echarts.apache.org/). Hostet på [Vercel](https://vercel.com/). Grafana-inspirert mørkt tema med JetBrains Mono.
 
+Støtter flere hjem (Tibber homes) med individuell temperaturstasjon og koordinater for prognose.
+
 ![Dashboard - årsvisning](screencapture-1y.png)
 
 ## Hva viser det?
 
-- **Gauge** med gjennomsnittsforbruk for valgt periode
+**Alle perioder (24t, 7d, 28d, 1y):**
+- **Gauge** med gjennomsnittsforbruk for valgt periode. I 24t-visning: avvik fra sesongmodellens forventning
 - **Linjegraf** med forbruk, rullende snitt og utetemperatur (dual y-akse)
+- **Kumulativ strømstøtte** (kun individuelle hjem): kumulativt forbruk denne måneden med projisert total mot 5000 kWh-grensen, basert på temperaturprognose
+- **Forbruksprognose**: 7 dager tilbake + 21 dager fremover med usikkerhetsbånd, basert på met.no-prognose
 - **År-over-år sammenligning** med sentrert rullende snitt (±7 dager) og rød/grønn fyll som viser om forbruket har gått opp eller ned
 - **Månedlig endring** i prosent sammenlignet med tilsvarende måned året før
-- **Scatter plot** med temperatur vs. forbruk og regresjonslinjer (kun årsvisning)
-- **Heatmap** med snittforbruk per ukedag og klokketime (kun årsvisning)
-- **Snitt per ukedag** som bar chart (kun årsvisning)
 
-Fire perioder: 24 timer, 7 dager, 28 dager og 1 år.
+**Kun årsvisning (365d):**
+- **Scatter plot** med temperatur vs. forbruk, lineær/kvadratisk/sesongregresjon, vinter- og sommerkurver
+- **Heatmap** med snittforbruk per ukedag og klokketime
+- **Snitt per ukedag** som bar chart
+
+## Regresjonsmodell
+
+Forbruksprediksjon bruker en robust sesongmodell:
+
+```
+kWh = a + b·T + c·T² + d·sin(2π·doy/365) + e·cos(2π·doy/365)
+```
+
+- Fourier-leddene fanger sesongavhengig forbruk (f.eks. basseng om sommeren) som temperatur alene ikke forklarer
+- MAD-basert outlier-fjerning filtrerer bort elbil-ladingstopper (typisk 2–4% av datapunktene)
+- Modellen beregnes fra siste 1 års timedata og brukes av alle prognosegrafer + gauge-avvik
 
 ## Arkitektur
 
 ```
-GitHub Actions (cron hvert kvarter)
+GitHub Actions (cron :15 hver time)
     ↓
 /api/collect.js (Vercel serverless, henter siste 72t)
     ↓ Tibber GraphQL API → forbruksdata
-    ↓ Frost API (met.no) → temperaturdata
+    ↓ Frost API (met.no) → temperaturdata (per hjem-stasjon)
     ↓
 Supabase (PostgreSQL, upsert)
     ↓
 Frontend spør Supabase direkte (RLS + auth)
+    ↓ /api/forecast.js → temperaturprognose fra met.no
     ↓
 Ren HTML + vanilla JS + ECharts
 ```
 
-Ingen build step, ingen bundler, ingen React. Bare HTML, vanilla JavaScript (ES modules) og en serverless function (CommonJS).
+Ingen build step, ingen bundler, ingen React. Bare HTML, vanilla JavaScript (ES modules) og serverless functions (CommonJS).
 
 ## Tech stack
 
@@ -42,40 +60,108 @@ Ingen build step, ingen bundler, ingen React. Bare HTML, vanilla JavaScript (ES 
 | Database | Supabase PostgreSQL (free tier) |
 | Autentisering | Supabase Auth (e-post/passord) |
 | Strømdata | Tibber GraphQL API |
-| Temperatur | Frost API (met.no, stasjon SN17280) |
+| Temperatur (historisk) | Frost API (met.no, konfigurerbar stasjon per hjem) |
+| Temperatur (prognose) | met.no Locationforecast + Subseasonal |
 | Grafer | ECharts (CDN) |
 | Styling | Tailwind CSS (CDN) |
 | Cron | GitHub Actions |
 
 ## Oppsett
 
-1. Opprett kontoer hos Vercel, Supabase, Tibber Developer og Frost (met.no)
-2. Opprett en `consumption`-tabell i Supabase:
-   ```sql
-   CREATE TABLE consumption (
-     timestamp TIMESTAMPTZ PRIMARY KEY,
-     consumption_kwh NUMERIC,
-     outside_temp_c NUMERIC
-   );
-   ```
-3. Aktiver Row Level Security med SELECT-tilgang for autentiserte brukere
-4. Opprett en bruker i Supabase Auth
-5. Sett environment variables i Vercel:
-   ```
-   TIBBER_API_TOKEN
-   TIBBER_HOME_ID
-   SUPABASE_URL
-   SUPABASE_SERVICE_KEY
-   CRON_SECRET
-   FROST_CLIENT_ID
-   ```
-6. Sett opp GitHub Actions med `CRON_SECRET` som secret og `COLLECT_URL` som variabel
-7. Deploy til Vercel (`git push` til `main`)
-8. Kjør en backfill for å hente historisk data:
-   ```bash
-   curl -X POST "https://din-app.vercel.app/api/collect?hours=100000" \
-     -H "x-cron-secret: din-nøkkel"
-   ```
+### 1. Kontoer
+
+Opprett kontoer hos [Vercel](https://vercel.com/), [Supabase](https://supabase.com/), [Tibber Developer](https://developer.tibber.com/) og [Frost (met.no)](https://frost.met.no/).
+
+### 2. Database (Supabase)
+
+Opprett tabellene i Supabase SQL Editor:
+
+```sql
+CREATE TABLE homes (
+  id TEXT PRIMARY KEY,           -- Tibber home ID
+  name TEXT NOT NULL,            -- Visningsnavn ("Hjemme", "Hytta")
+  sort_order INT DEFAULT 0,
+  lat NUMERIC,                   -- Breddegrad (for temperaturprognose fra met.no)
+  lon NUMERIC,                   -- Lengdegrad (for temperaturprognose fra met.no)
+  frost_station TEXT              -- Frost-stasjon for historisk temperatur (default: SN17280)
+);
+
+CREATE TABLE consumption (
+  home_id TEXT NOT NULL REFERENCES homes(id),
+  timestamp TIMESTAMPTZ NOT NULL,
+  consumption_kwh NUMERIC,
+  outside_temp_c NUMERIC,
+  PRIMARY KEY (home_id, timestamp)
+);
+CREATE INDEX idx_consumption_timestamp ON consumption (timestamp);
+```
+
+### 3. Legg inn hjem
+
+Finn dine Tibber home IDs via [Tibber API Explorer](https://developer.tibber.com/explorer) og legg dem inn i `homes`-tabellen:
+
+```sql
+INSERT INTO homes (id, name, sort_order, lat, lon, frost_station) VALUES
+  ('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'Hjemme', 1, 59.91, 10.75, 'SN17280'),
+  ('yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy', 'Hytta',  2, 58.15, 8.00,  'SN38140');
+```
+
+- `lat`/`lon`: koordinater for temperaturprognose (met.no). Finn via Google Maps
+- `frost_station`: nærmeste Frost-stasjon for historisk temperatur. Finn via [Frost stasjonsliste](https://frost.met.no/sources/v0.jsonld). Utelat for å bruke default SN17280
+
+### 4. Row Level Security
+
+Aktiver RLS på begge tabellene og legg til policies:
+
+```sql
+ALTER TABLE homes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE consumption ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Autentiserte kan lese homes" ON homes FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Autentiserte kan lese consumption" ON consumption FOR SELECT TO authenticated USING (true);
+```
+
+### 5. Auth
+
+Opprett en bruker i Supabase Auth (Authentication → Users → Add User).
+
+### 6. Environment variables (Vercel)
+
+Sett i Vercel → Settings → Environment Variables:
+
+```
+TIBBER_API_TOKEN       # Fra developer.tibber.com
+SUPABASE_URL           # Supabase prosjekt-URL
+SUPABASE_SERVICE_KEY   # Supabase service_role key (kun server-side)
+CRON_SECRET            # Hemmelig nøkkel for å sikre collect-endepunktet
+FROST_CLIENT_ID        # Fra frost.met.no
+```
+
+### 7. GitHub Actions
+
+Sett opp repository secrets/variables:
+- **Secret**: `CRON_SECRET` – samme verdi som i Vercel
+- **Variable**: `COLLECT_URL` – `https://din-app.vercel.app/api/collect`
+
+### 8. Deploy
+
+```bash
+git push  # Vercel bygger automatisk fra main
+```
+
+### 9. Backfill
+
+Hent historisk data (Tibber har 1–2 år tilbake):
+
+```bash
+# Alle hjem:
+curl -X POST "https://din-app.vercel.app/api/collect?hours=100000" \
+  -H "x-cron-secret: din-nøkkel"
+
+# Spesifikt hjem:
+curl -X POST "https://din-app.vercel.app/api/collect?hours=100000&home=<TIBBER_HOME_ID>" \
+  -H "x-cron-secret: din-nøkkel"
+```
 
 ## Vibe-kodet
 

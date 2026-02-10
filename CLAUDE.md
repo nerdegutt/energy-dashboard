@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Viktig: Hold README.md oppdatert
+
+Når funksjonalitet legges til eller endres, **må README.md oppdateres i samme commit**. README er den primære oppsettguiden for prosjektet og inneholder database-skjema, oppsettsinstruksjoner og funksjonsbeskrivelser som må speile faktisk kode.
+
 ## Oversikt
 
 Personlig strømforbruk-dashboard som henter timedata fra Tibber API, lagrer i Supabase, og visualiserer med ECharts. Hostet på Vercel. Grafana-inspirert mørkt tema. Støtter flere hjem (Tibber homes) via `homes`-tabell – brukeren velger hjem via dropdown i headeren.
