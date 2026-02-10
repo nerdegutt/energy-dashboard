@@ -1,7 +1,16 @@
 import { sb } from './auth.js';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 time
-const CACHE_PREFIX = 'energy_';
+const CACHE_PREFIX = 'energy_v2_';
+
+// Rydd opp gamle cache-oppføringer (migrering fra v1-format)
+try {
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith('energy_') && !key.startsWith('energy_v2_')) {
+      localStorage.removeItem(key);
+    }
+  }
+} catch {}
 
 export function clearCache() {
   for (const key of Object.keys(localStorage)) {
