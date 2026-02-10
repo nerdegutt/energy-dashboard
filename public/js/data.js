@@ -76,6 +76,7 @@ async function fetchSingleHome(days, homeId) {
   if (cached) return cached;
 
   const since = new Date();
+  since.setMinutes(0, 0, 0);
   since.setDate(since.getDate() - days);
 
   const all = [];
