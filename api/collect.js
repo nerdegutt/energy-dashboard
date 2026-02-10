@@ -96,10 +96,16 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    const tempPoints = {};
+    for (const [station, tMap] of tempMapByStation) {
+      tempPoints[station] = tMap.size;
+    }
+
     return res.status(200).json({
       message: 'OK',
       homes: homes.map((h) => h.id),
       upserted: totalUpserted,
+      tempPoints,
     });
   } catch (err) {
     console.error('collect error:', err);
