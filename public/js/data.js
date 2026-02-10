@@ -188,12 +188,13 @@ export function yearOverYear(data, days) {
     previousVals.push(previousDaily.get(prevDateStr) ?? null);
   }
 
-  // 28-dagers rullende snitt
+  // 14-dagers sentrert rullende snitt (±7 dager)
   const rolling = (vals) => {
-    const w = 28;
+    const half = 7;
     return vals.map((_, i) => {
-      const start = Math.max(0, i - w + 1);
-      const window = vals.slice(start, i + 1).filter((v) => v != null);
+      const start = Math.max(0, i - half);
+      const end = Math.min(vals.length, i + half + 1);
+      const window = vals.slice(start, end).filter((v) => v != null);
       return window.length > 0 ? window.reduce((s, v) => s + v, 0) / window.length : null;
     });
   };

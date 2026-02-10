@@ -11,7 +11,7 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const hours = parseInt(req.query.hours) || 24;
+  const hours = parseInt(req.query.hours) || 72;
 
   try {
     // --- Tibber ---

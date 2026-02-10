@@ -390,7 +390,7 @@ export function renderScatterChart(data) {
   return chart;
 }
 
-// --- År-over-år sammenligning (28d rullende snitt) ---
+// --- År-over-år sammenligning (±7d sentrert rullende snitt) ---
 export function renderYoyChart(yoyData) {
   const chart = getOrCreate('yoy-chart');
 
@@ -444,7 +444,7 @@ export function renderYoyChart(yoyData) {
     },
     yAxis: {
       type: 'value',
-      name: 'kWh (28d snitt)',
+      name: 'kWh (±7d snitt)',
       nameTextStyle: baseTextStyle(),
       axisLine: baseAxisLine(),
       axisLabel: baseTextStyle(),
