@@ -14,6 +14,7 @@ function getOrCreate(id) {
     instances[id].dispose();
   }
   const el = document.getElementById(id);
+  if (!el.hasAttribute('role')) el.setAttribute('role', 'img');
   const chart = echarts.init(el);
   instances[id] = chart;
   return chart;
@@ -43,6 +44,7 @@ export function renderGauge(data, days) {
   const periodLabel = days >= 365 ? 'snitt 1 år' : days >= 28 ? 'snitt 28d' : days >= 7 ? 'snitt 7d' : 'snitt 24t';
 
   chart.setOption({
+    aria: { enabled: true, label: { description: `Gjennomsnittlig strømforbruk: ${avg.toFixed(2)} kWh, ${periodLabel}` } },
     series: [{
       type: 'gauge',
       startAngle: 210,
@@ -115,6 +117,8 @@ export function renderLineChart(data, rollingAvg, days) {
   };
 
   chart.setOption({
+    title: { text: 'Forbruk og temperatur', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: 'Linjegraf som viser strømforbruk, rullende snitt og temperatur over tid' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: '#1a1a2e',
@@ -125,9 +129,9 @@ export function renderLineChart(data, rollingAvg, days) {
     legend: {
       data: ['Forbruk', days >= 365 ? '7d snitt' : '24t snitt', 'Temperatur'],
       textStyle: baseTextStyle(),
-      top: 0,
+      top: 20,
     },
-    grid: { left: 50, right: 50, top: 40, bottom: 70 },
+    grid: { left: 50, right: 50, top: 55, bottom: 70 },
     xAxis: {
       type: 'category',
       data: timestamps,
@@ -326,6 +330,8 @@ export function renderScatterChart(data) {
   }
 
   chart.setOption({
+    title: { text: 'Temperatur vs. forbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: `Punktdiagram med ${points.length} datapunkter. Lineær regresjon R²=${r2Lin.toFixed(3)}, kvadratisk regresjon R²=${r2Quad.toFixed(3)}` } },
     tooltip: {
       trigger: 'item',
       backgroundColor: '#1a1a2e',
@@ -339,9 +345,9 @@ export function renderScatterChart(data) {
     legend: {
       data: ['Forbruk', '1. grad', '2. grad'],
       textStyle: baseTextStyle(),
-      top: 0,
+      top: 20,
     },
-    grid: { left: 50, right: 30, top: 40, bottom: 40 },
+    grid: { left: 50, right: 30, top: 55, bottom: 40 },
     xAxis: {
       type: 'value',
       name: 'Temperatur (°C)',
@@ -401,6 +407,8 @@ export function renderYoyChart(yoyData) {
   };
 
   chart.setOption({
+    title: { text: 'År-over-år sammenligning', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: 'Sammenligning av strømforbruk siste år mot forrige periode med 28-dagers rullende snitt' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: '#1a1a2e',
@@ -424,9 +432,9 @@ export function renderYoyChart(yoyData) {
     legend: {
       data: ['Siste år', 'Forrige periode'],
       textStyle: baseTextStyle(),
-      top: 0,
+      top: 20,
     },
-    grid: { left: 50, right: 20, top: 40, bottom: 70 },
+    grid: { left: 50, right: 20, top: 55, bottom: 70 },
     xAxis: {
       type: 'category',
       data: yoyData.labels,
@@ -575,6 +583,8 @@ export function renderMonthlyChangeChart(monthlyChange) {
   const chart = getOrCreate('monthly-change-chart');
 
   chart.setOption({
+    title: { text: 'Månedlig endring vs. forrige år', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: 'Stolpediagram som viser prosentvis endring i strømforbruk per måned sammenlignet med året før' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: '#1a1a2e',
@@ -586,7 +596,7 @@ export function renderMonthlyChangeChart(monthlyChange) {
         return `${p.name}: ${Math.abs(p.value).toFixed(1)}% ${dir} enn året før`;
       },
     },
-    grid: { left: 50, right: 20, top: 40, bottom: 30 },
+    grid: { left: 50, right: 20, top: 55, bottom: 30 },
     xAxis: {
       type: 'category',
       data: monthlyChange.map((d) => d.month),
@@ -645,13 +655,15 @@ export function renderHeatmap(heatmapData) {
   const maxVal = vals.length > 0 ? Math.max(...vals) : 0.1;
 
   chart.setOption({
+    title: { text: 'Forbruk: ukedag × klokketime', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: 'Varmekart som viser gjennomsnittlig strømforbruk fordelt på ukedag og klokketime' } },
     tooltip: {
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
       formatter: (p) => `${WEEKDAYS[p.value[1]]} ${hours[p.value[0]]}<br/>${p.value[2].toFixed(2)} kWh`,
     },
-    grid: { left: 50, right: 30, top: 10, bottom: 60 },
+    grid: { left: 50, right: 30, top: 30, bottom: 60 },
     xAxis: {
       type: 'category',
       data: hours,
@@ -695,6 +707,8 @@ export function renderWeekdayChart(weekdayData) {
   const chart = getOrCreate('weekday-chart');
 
   chart.setOption({
+    title: { text: 'Snitt per ukedag', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: 'Stolpediagram som viser gjennomsnittlig strømforbruk per ukedag, mandag til søndag' } },
     tooltip: {
       trigger: 'axis',
       backgroundColor: '#1a1a2e',
@@ -702,7 +716,7 @@ export function renderWeekdayChart(weekdayData) {
       textStyle: baseTextStyle(),
       formatter: (p) => `${p[0].name}: ${p[0].value.toFixed(2)} kWh`,
     },
-    grid: { left: 50, right: 20, top: 30, bottom: 30 },
+    grid: { left: 50, right: 20, top: 45, bottom: 30 },
     xAxis: {
       type: 'category',
       data: weekdayData.map((d) => d.day),
