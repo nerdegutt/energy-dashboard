@@ -2,6 +2,8 @@
 
 Personlig dashboard for strømforbruk. Henter timedata fra [Tibber](https://tibber.com/) og utetemperatur fra [Frost API](https://frost.met.no/) (met.no), lagrer alt i [Supabase](https://supabase.com/) (PostgreSQL), og visualiserer med [ECharts](https://echarts.apache.org/). Hostet på [Vercel](https://vercel.com/). Grafana-inspirert mørkt tema med JetBrains Mono.
 
+![Dashboard - årsvisning](screencapture-1y.png)
+
 ## Hva viser det?
 
 - **Gauge** med gjennomsnittsforbruk for valgt periode
