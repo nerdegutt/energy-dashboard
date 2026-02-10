@@ -1,12 +1,12 @@
 import { sb } from './auth.js';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 time
-const CACHE_PREFIX = 'energy_v2_';
+const CACHE_PREFIX = 'energy_v3_';
 
-// Rydd opp gamle cache-oppføringer (migrering fra v1-format)
+// Rydd opp gamle cache-oppføringer
 try {
   for (const key of Object.keys(localStorage)) {
-    if (key.startsWith('energy_') && !key.startsWith('energy_v2_')) {
+    if (key.startsWith('energy_') && !key.startsWith('energy_v3_')) {
       localStorage.removeItem(key);
     }
   }
@@ -18,12 +18,28 @@ export function clearCache() {
   }
 }
 
+// Kompakt cache: [YYYYMMDDHH, kwh, temp] i stedet for fulle objekter
+function packRows(rows) {
+  return rows.map(r => {
+    const t = r.timestamp.replace(/[-T:]/g, '').slice(0, 10);
+    return [t, r.consumption_kwh, r.outside_temp_c];
+  });
+}
+
+function unpackRows(packed) {
+  return packed.map(([t, kwh, temp]) => ({
+    timestamp: `${t.slice(0,4)}-${t.slice(4,6)}-${t.slice(6,8)}T${t.slice(8,10)}:00:00.000Z`,
+    consumption_kwh: kwh,
+    outside_temp_c: temp,
+  }));
+}
+
 function getCache(days, homeId) {
   try {
     const raw = localStorage.getItem(`${CACHE_PREFIX}${homeId}_${days}`);
     if (!raw) return null;
     const cached = JSON.parse(raw);
-    if (Date.now() - cached.ts < CACHE_TTL) return cached.data;
+    if (Date.now() - cached.ts < CACHE_TTL) return cached.data ? unpackRows(cached.data) : null;
     localStorage.removeItem(`${CACHE_PREFIX}${homeId}_${days}`);
   } catch {}
   return null;
@@ -31,7 +47,7 @@ function getCache(days, homeId) {
 
 function setCache(days, homeId, data) {
   try {
-    localStorage.setItem(`${CACHE_PREFIX}${homeId}_${days}`, JSON.stringify({ data, ts: Date.now() }));
+    localStorage.setItem(`${CACHE_PREFIX}${homeId}_${days}`, JSON.stringify({ data: packRows(data), ts: Date.now() }));
   } catch {}
 }
 
