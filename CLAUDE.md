@@ -183,12 +183,19 @@ jobs:
 ### Data-henting og cache
 - Frontend spør Supabase direkte (ingen `/api/data.js`-rute)
 - Paginerer i batches à 1000 rader (Supabase default-limit)
-- **localStorage-cache** med 1 times TTL per periode og hjem (nøkkel: `energy_<homeId>_<days>`)
-- Bytte av hjem tømmer cache og henter ferske data
+- **localStorage-cache** med 1 times TTL per hjem og periode (nøkkel: `energy_v3_<homeId>_<days>`)
+- **Kompakt cache-format**: rader lagres som `[YYYYMMDDHH, kwh, temp]`-arrays – ~3.5× mindre enn fulle objekter
+- Kun per-hjem-data caches – "Alle" bygges fra per-hjem-cacher via `mergeHomes()` (tar <1 ms)
+- Cache-versjon bumpes (`v2` → `v3` osv.) ved formatendringer – gamle oppføringer ryddes automatisk
+- **"Alle"-modus**: henter hvert hjem i parallell (`Promise.all`), deretter `mergeHomes()` som summerer `consumption_kwh` per timestamp og beholder første `outside_temp_c`
 - Refresh-knapp tømmer cache og henter ferske data
 - **Manglende timer fylles inn** med null-verdier (`fillMissingHours`) for komplett tidsrekke
 - Alle beregninger (snitt, heatmap, weekday) filtrerer bort null-verdier
-- **"Alle"-modus**: `mergeHomes()` summerer `consumption_kwh` per timestamp og beholder første `outside_temp_c`
+
+### URL-state
+- Valgt hjem og periode persisteres i URL query params (`?home=<id>&days=<n>`)
+- Default (Alle, 24t) gir ren URL uten params
+- `history.replaceState` brukes for å unngå å forurense nettleserhistorikken
 
 ### Periodevelger og aggregering
 - **24t**: Timedata, x-akse viser klokkeslett (hver 3. time), ingen rullende snitt
@@ -254,6 +261,8 @@ jobs:
 
 ### Client-side beregninger (data.js)
 
+- **`packRows`/`unpackRows`**: Komprimerer rader til `[YYYYMMDDHH, kwh, temp]` for localStorage-cache
+- **`fetchSingleHome`**: Henter data for ett hjem med paginering, cacher resultatet
 - **`mergeHomes`**: Grupperer rader per timestamp, summerer `consumption_kwh`, beholder første `outside_temp_c` (brukes for "Alle"-visning)
 - **`fillMissingHours`**: Fyller inn manglende timer med null-verdier for komplett tidsrekke
 - **`rollingAverage`**: Sliding window (24 timer eller 7 dager), filtrerer null
