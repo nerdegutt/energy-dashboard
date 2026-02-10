@@ -1,3 +1,5 @@
+import { quadraticRegression } from './data.js';
+
 const CYAN = '#22d3ee';
 const ORANGE = '#f97316';
 const TEXT = '#a0a0b0';
@@ -33,7 +35,7 @@ function baseSplitLine() {
 }
 
 // --- Gauge: Snitt for valgt periode ---
-export function renderGauge(data, days) {
+export function renderGauge(data, days, deviation) {
   const chart = getOrCreate('gauge-chart');
 
   const valid = data.filter((d) => d.consumption_kwh != null);
@@ -43,8 +45,26 @@ export function renderGauge(data, days) {
 
   const periodLabel = days >= 365 ? 'snitt 1 år' : days >= 28 ? 'snitt 28d' : days >= 7 ? 'snitt 7d' : 'snitt 24t';
 
+  const deviationText = deviation != null
+    ? `${Math.abs(deviation).toFixed(0)}% ${deviation < 0 ? 'under' : 'over'} forventet`
+    : null;
+  const deviationColor = deviation != null
+    ? (deviation < 0 ? '#22c55e' : '#ef4444')
+    : TEXT;
+
   chart.setOption({
-    aria: { enabled: true, label: { description: `Gjennomsnittlig strømforbruk: ${avg.toFixed(2)} kWh, ${periodLabel}` } },
+    aria: { enabled: true, label: { description: `Gjennomsnittlig strømforbruk: ${avg.toFixed(2)} kWh, ${periodLabel}${deviationText ? '. ' + deviationText : ''}` } },
+    graphic: deviationText ? [{
+      type: 'text',
+      left: 'center',
+      bottom: '4%',
+      style: {
+        text: deviationText,
+        fill: deviationColor,
+        font: `11px ${FONT}`,
+        textAlign: 'center',
+      },
+    }] : [],
     series: [{
       type: 'gauge',
       startAngle: 210,
@@ -238,48 +258,6 @@ function linearRegression(points) {
   const b = (n * sxy - sx * sy) / (n * sxx - sx * sx);
   const a = (sy - b * sx) / n;
   return { a, b }; // y = a + b*x
-}
-
-function quadraticRegression(points) {
-  const n = points.length;
-  let sx = 0, sx2 = 0, sx3 = 0, sx4 = 0, sy = 0, sxy = 0, sx2y = 0;
-  for (const [x, y] of points) {
-    const x2 = x * x;
-    sx += x; sx2 += x2; sx3 += x2 * x; sx4 += x2 * x2;
-    sy += y; sxy += x * y; sx2y += x2 * y;
-  }
-  // Løs 3x3 lineært system med Cramers regel
-  const A = [
-    [n, sx, sx2],
-    [sx, sx2, sx3],
-    [sx2, sx3, sx4],
-  ];
-  const B = [sy, sxy, sx2y];
-
-  function det3(m) {
-    return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
-         - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-         + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
-  }
-
-  const D = det3(A);
-  const D0 = det3([
-    [B[0], A[0][1], A[0][2]],
-    [B[1], A[1][1], A[1][2]],
-    [B[2], A[2][1], A[2][2]],
-  ]);
-  const D1 = det3([
-    [A[0][0], B[0], A[0][2]],
-    [A[1][0], B[1], A[1][2]],
-    [A[2][0], B[2], A[2][2]],
-  ]);
-  const D2 = det3([
-    [A[0][0], A[0][1], B[0]],
-    [A[1][0], A[1][1], B[1]],
-    [A[2][0], A[2][1], B[2]],
-  ]);
-
-  return { a: D0 / D, b: D1 / D, c: D2 / D }; // y = a + b*x + c*x²
 }
 
 function rSquared(points, predict) {

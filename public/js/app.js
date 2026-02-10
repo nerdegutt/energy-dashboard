@@ -1,5 +1,5 @@
 import { sb, getSession, signIn, signOut } from './auth.js';
-import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData } from './data.js';
+import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, quadraticRegression, consumptionDeviation } from './data.js';
 import {
   renderGauge,
   renderLineChart,
@@ -213,7 +213,20 @@ async function loadData(days) {
     const yoyData = await fetchData(yoyDays, currentHomeId);
     const yoy = yearOverYear(yoyData, 365);
 
-    renderGauge(data, days);
+    // Beregn avvik fra forventet forbruk (basert på årsmodell)
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const regressionPoints = yoyData
+      .filter(d => new Date(d.timestamp) >= oneYearAgo && d.consumption_kwh != null && d.outside_temp_c != null)
+      .map(d => [d.outside_temp_c, d.consumption_kwh]);
+
+    let deviation = null;
+    if (days <= 1 && regressionPoints.length > 100) {
+      const coeffs = quadraticRegression(regressionPoints);
+      deviation = consumptionDeviation(data, coeffs);
+    }
+
+    renderGauge(data, days, deviation);
     renderLineChart(chartData, rolling, days);
 
     // Linjegraf-tabell

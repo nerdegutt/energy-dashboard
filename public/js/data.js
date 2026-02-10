@@ -318,6 +318,73 @@ export function avgByWeekday(data) {
   }));
 }
 
+export function quadraticRegression(points) {
+  const n = points.length;
+  let sx = 0, sx2 = 0, sx3 = 0, sx4 = 0, sy = 0, sxy = 0, sx2y = 0;
+  for (const [x, y] of points) {
+    const x2 = x * x;
+    sx += x; sx2 += x2; sx3 += x2 * x; sx4 += x2 * x2;
+    sy += y; sxy += x * y; sx2y += x2 * y;
+  }
+  const A = [
+    [n, sx, sx2],
+    [sx, sx2, sx3],
+    [sx2, sx3, sx4],
+  ];
+  const B = [sy, sxy, sx2y];
+
+  function det3(m) {
+    return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+         - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+         + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  }
+
+  const D = det3(A);
+  const D0 = det3([
+    [B[0], A[0][1], A[0][2]],
+    [B[1], A[1][1], A[1][2]],
+    [B[2], A[2][1], A[2][2]],
+  ]);
+  const D1 = det3([
+    [A[0][0], B[0], A[0][2]],
+    [A[1][0], B[1], A[1][2]],
+    [A[2][0], B[2], A[2][2]],
+  ]);
+  const D2 = det3([
+    [A[0][0], A[0][1], B[0]],
+    [A[1][0], A[1][1], B[1]],
+    [A[2][0], A[2][1], B[2]],
+  ]);
+
+  return { a: D0 / D, b: D1 / D, c: D2 / D }; // y = a + b*x + c*x²
+}
+
+export function consumptionDeviation(data, coeffs) {
+  if (!coeffs || data.length === 0) return null;
+  const { a, b, c } = coeffs;
+
+  const latest = new Date(data[data.length - 1].timestamp);
+  const cutoff = new Date(latest);
+  cutoff.setHours(cutoff.getHours() - 24);
+
+  const recent = data.filter(d => {
+    const t = new Date(d.timestamp);
+    return t >= cutoff && d.consumption_kwh != null && d.outside_temp_c != null;
+  });
+
+  if (recent.length < 6) return null;
+
+  let actual = 0, expected = 0;
+  for (const d of recent) {
+    actual += d.consumption_kwh;
+    const temp = d.outside_temp_c;
+    expected += a + b * temp + c * temp * temp;
+  }
+
+  if (expected === 0) return null;
+  return ((actual - expected) / expected) * 100;
+}
+
 export function heatmapData(data) {
   // [ukedag (0=man), klokketime, snittverdi]
   const buckets = {};
