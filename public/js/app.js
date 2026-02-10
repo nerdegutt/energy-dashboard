@@ -21,8 +21,30 @@ const loginError = document.getElementById('login-error');
 const logoutBtn = document.getElementById('logout-btn');
 const periodSelector = document.getElementById('period-selector');
 
-let currentDays = 1;
-let currentHomeId = 'all';
+// --- URL-state ---
+const VALID_DAYS = [1, 7, 28, 365];
+
+function readUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  const days = parseInt(params.get('days'));
+  const home = params.get('home');
+  return {
+    days: VALID_DAYS.includes(days) ? days : 1,
+    home: home || 'all',
+  };
+}
+
+function updateUrl() {
+  const params = new URLSearchParams();
+  if (currentDays !== 1) params.set('days', currentDays);
+  if (currentHomeId !== 'all') params.set('home', currentHomeId);
+  const qs = params.toString();
+  history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+}
+
+const initialState = readUrlState();
+let currentDays = initialState.days;
+let currentHomeId = initialState.home;
 
 // --- Datatabell ---
 const WEEKDAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
@@ -98,6 +120,7 @@ document.getElementById('refresh-btn').addEventListener('click', () => {
 // --- Home selector ---
 document.getElementById('home-selector').addEventListener('change', (e) => {
   currentHomeId = e.target.value;
+  updateUrl();
   clearCache();
   announce(`Viser ${e.target.options[e.target.selectedIndex].textContent}`);
   loadData(currentDays);
@@ -117,6 +140,14 @@ async function loadHomes() {
 // --- Period selector ---
 const periodLabels = { 1: '24 timer', 7: '7 dager', 28: '28 dager', 365: '1 år' };
 
+function syncPeriodButtons() {
+  periodSelector.querySelectorAll('.period-btn').forEach((b) => {
+    const active = parseInt(b.dataset.days) === currentDays;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-current', String(active));
+  });
+}
+
 periodSelector.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-days]');
   if (!btn) return;
@@ -125,12 +156,8 @@ periodSelector.addEventListener('click', (e) => {
   if (days === currentDays) return;
 
   currentDays = days;
-  periodSelector.querySelectorAll('.period-btn').forEach((b) => {
-    b.classList.remove('active');
-    b.setAttribute('aria-current', 'false');
-  });
-  btn.classList.add('active');
-  btn.setAttribute('aria-current', 'true');
+  updateUrl();
+  syncPeriodButtons();
   announce(`Viser ${periodLabels[days] || days + ' dager'}`);
   loadData(days);
 });
@@ -149,6 +176,7 @@ async function showDashboard() {
   const heading = dashboard.querySelector('h1');
   if (heading) setTimeout(() => heading.focus(), 100);
   await loadHomes();
+  syncPeriodButtons();
   loadData(currentDays);
 }
 
