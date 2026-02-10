@@ -88,16 +88,11 @@ async function fetchSingleHome(days, homeId) {
 }
 
 export async function fetchData(days, homeId = 'all') {
-  const cached = getCache(days, homeId);
-  if (cached) return cached;
-
   if (homeId === 'all') {
     const { data: homes } = await sb.from('homes').select('id').order('sort_order');
     if (!homes || homes.length === 0) return [];
     const perHome = await Promise.all(homes.map(h => fetchSingleHome(days, h.id)));
-    const result = mergeHomes(perHome.flat());
-    setCache(days, homeId, result);
-    return result;
+    return mergeHomes(perHome.flat());
   }
 
   return fetchSingleHome(days, homeId);
