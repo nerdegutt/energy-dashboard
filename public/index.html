@@ -123,7 +123,27 @@
         </section>
       </div>
 
-      <!-- Rad 2: Temperatur vs forbruk -->
+      <!-- Rad 2: Kumulativ strømstøtte -->
+      <section id="cumulative-panel" class="panel rounded-lg p-4 hidden" aria-labelledby="cumulative-title">
+        <h2 id="cumulative-title" class="sr-only">Strømstøtte: Kumulativt forbruk</h2>
+        <div id="cumulative-chart" role="img" tabindex="0" aria-label="Kumulativ graf over strømforbruk denne måneden mot 5000 kWh-grensen" style="height: 350px;"></div>
+        <div class="flex justify-end mt-2">
+          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
+        </div>
+        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      </section>
+
+      <!-- Rad 3: Forbruksprognose -->
+      <section id="forecast-panel" class="panel rounded-lg p-4 hidden" aria-labelledby="forecast-title">
+        <h2 id="forecast-title" class="sr-only">Forbruksprognose</h2>
+        <div id="forecast-chart" role="img" tabindex="0" aria-label="Forbruksprognose: 7 dager tilbake og 21 dager fremover med usikkerhetsintervall" style="height: 350px;"></div>
+        <div class="flex justify-end mt-2">
+          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
+        </div>
+        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      </section>
+
+      <!-- Rad 4: Temperatur vs forbruk -->
       <section class="panel rounded-lg p-4" aria-labelledby="scatter-title">
         <h2 id="scatter-title" class="sr-only">Temperatur vs. forbruk</h2>
         <div id="scatter-chart" role="img" tabindex="0" aria-label="Punktdiagram som viser sammenheng mellom temperatur og strømforbruk med regresjonslinjer" style="height: 350px;"></div>

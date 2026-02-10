@@ -35,16 +35,17 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 ```
 /
 ├── api/
-│   └── collect.js          # Cron-endepunkt: Tibber + Frost → Supabase (CommonJS)
+│   ├── collect.js           # Cron-endepunkt: Tibber + Frost → Supabase (CommonJS)
+│   └── forecast.js          # Temperaturprognose-proxy: met.no → frontend (CommonJS)
 ├── public/
 │   ├── index.html           # HTML-skjelett, CDN-imports, login-skjerm, dashboard-layout
 │   └── js/
 │       ├── app.js           # Entry point: auth, periodevelger, hjemvelger, datatabeller, orkestrering
 │       ├── auth.js          # Supabase-klient, login/logout, session-håndtering
-│       ├── data.js          # Hent data fra Supabase, cache, beregninger, mergeHomes()
-│       └── charts.js        # Alle 7 ECharts-konfigurasjoner og rendering
+│       ├── data.js          # Hent data fra Supabase, cache, beregninger, regresjon, prognose
+│       └── charts.js        # Alle 9 ECharts-konfigurasjoner og rendering
 ├── package.json             # Avhengighet: @supabase/supabase-js
-├── vercel.json              # Vercel-konfigurasjon (maxDuration: 60 for collect)
+├── vercel.json              # Vercel-konfigurasjon (maxDuration: 60 for collect, 10 for forecast)
 ├── .github/
 │   └── workflows/
 │       └── collect.yml      # GitHub Actions cron-trigger
@@ -72,7 +73,10 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 CREATE TABLE homes (
   id TEXT PRIMARY KEY,        -- Tibber home ID
   name TEXT NOT NULL,         -- Visningsnavn ("Hjemme", "Hytta")
-  sort_order INT DEFAULT 0
+  sort_order INT DEFAULT 0,
+  lat NUMERIC,                -- Breddegrad (for temperaturprognose)
+  lon NUMERIC,                -- Lengdegrad (for temperaturprognose)
+  frost_station TEXT           -- Frost-stasjon (default: SN17280)
 );
 
 CREATE TABLE consumption (
@@ -88,6 +92,8 @@ CREATE INDEX idx_consumption_timestamp ON consumption (timestamp);
 - `consumption_kwh` tillater NULL (Tibber returnerer null for nylige timer som ikke er aggregert ennå)
 - `home_id` refererer til `homes`-tabellen – hvert hjem har egne forbruksrader
 - Homes konfigureres direkte i `homes`-tabellen (ikke via env vars)
+- `lat`/`lon` brukes av prognosegrafer til å hente temperaturprognose fra met.no
+- `frost_station` er valgfri – default `SN17280` (Gullholmen). Hvert hjem kan ha sin egen stasjon
 
 ### RLS
 
@@ -137,7 +143,7 @@ FROST_CLIENT_ID=            # Fra frost.met.no
 ### Frost API (met.no)
 - Endepunkt: `https://frost.met.no/observations/v0.jsonld`
 - Auth: Basic auth med `FROST_CLIENT_ID` som brukernavn, tomt passord
-- Stasjon: SN17280 (Gullholmen)
+- Stasjon: konfigurerbar per hjem via `frost_station`-kolonne i `homes`-tabellen (default: SN17280 Gullholmen)
 - Krever `User-Agent`-header
 - Frost-feil stopper ikke innsamlingen – temperatur settes til null
 
@@ -145,8 +151,25 @@ FROST_CLIENT_ID=            # Fra frost.met.no
 - Dedupliserer rader på timestamp per hjem (Map) før innsetting
 - Legg til `home_id` i hver rad
 - Upsert i chunks à 1000 rader med `onConflict: 'home_id,timestamp'`
-- Frost-temperatur hentes én gang (utenfor home-loopen) og deles mellom alle hjem
+- Frost-temperatur hentes én gang per unik stasjon, deretter fordeles til hjem via stasjon-mapping
 - Idempotent – gjentatte kjøringer er trygge
+
+## /api/forecast.js
+
+### Temperaturprognose-proxy
+- GET-endepunkt, åpent (ingen auth) – brukes av frontend for temperaturprognose
+- Query params: `?lat=<breddegrad>&lon=<lengdegrad>`
+- Validerer lat/lon-input
+
+### Datakilder (hentes parallelt)
+- **Locationforecast 2.0** (met.no): Timedata 0–65t + 6-timers intervaller til ~10 dager. Returnerer `temp`, `temp_p10`, `temp_p90` per time
+- **Subseasonal 1.0** (met.no): Daglige snitt dag 1–21. Returnerer `temp_mean`, `temp_p10`, `temp_p90` per dag
+- Begge bruker `User-Agent`-header (påkrevd av met.no)
+
+### Respons
+- `{ hourly: [...], daily: [...] }` – daily filtreres slik at datoer som dekkes av hourly ekskluderes
+- HTTP-cache: `Cache-Control: public, max-age=3600, s-maxage=3600`
+- Vercel maxDuration: 10s
 
 ## GitHub Actions Workflow
 
@@ -206,13 +229,15 @@ jobs:
 ### Grafer
 
 **Alle perioder:**
-- **Gauge**: Snitt for valgt periode (dynamisk label)
+- **Gauge**: Snitt for valgt periode (dynamisk label). I 24t-visning vises avvik fra forventet (sesongmodell)
 - **Linjegraf** (dual-axis): Forbruk + rullende snitt + temperatur, med dataZoom
+- **Kumulativ strømstøtte** (kun individuelle hjem): Kumulativt forbruk denne måneden med projisert total mot 5000 kWh-grensen. Viser faktisk (hel linje), projisert (stiplet), usikkerhetsbånd (p10/p90), og daglig forbruk som søyler. Bruker temperaturprognose fra met.no + sesongmodell for prediksjon
+- **Forbruksprognose** (7d + 21d): 7 dager tilbake med faktisk forbruk + 21 dager fremover med predikert forbruk. Dual-axis med temperatur. Usikkerhetsbånd for både forbruk og temperatur. Bruker timedata fra Locationforecast (kort horisont) og daglige snitt fra Subseasonal (lang horisont)
 - **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode, grønn fyll der siste år < forrige periode. Tooltip viser prosentvis differanse. Legend: "Siste år" (cyan) og "Forrige periode" (lilla).
 - **Månedlig endring**: Prosentvis endring per måned vs. tilsvarende måned året før. Grønn = mindre, rød = mer. Labels over stolpene viser %-verdi. Tooltip: "x% mer/mindre enn året før".
 
 **Kun årsvisning (365d):**
-- **Scatter**: Temperatur vs forbruk med lineær og kvadratisk regresjon + R²
+- **Scatter**: Temperatur vs forbruk med lineær, kvadratisk og sesongregresjon. Viser vinter-kurve (jan, blå stiplet) og sommer-kurve (jul, grønn stiplet) fra sesongmodellen. R²-verdier for alle tre modeller + antall fjernede outliers
 - **Heatmap**: Ukedag × klokketime
 - **Snitt per ukedag**: Bar chart man–søn
 
@@ -236,6 +261,10 @@ jobs:
 │  periode │  - Temperatur (oransje, høyre y-akse)         │
 │          │  [════════ dataZoom ══════════]                │
 ├──────────┴───────────────────────────────────────────────┤
+│  Kumulativt forbruk (strømstøtte) [kun individuelle hjem]│
+├──────────────────────────────────────────────────────────┤
+│  Forbruksprognose (7d + 21d)                             │
+├──────────────────────────────────────────────────────────┤
 │  Temperatur vs forbruk (scatter) [kun 1y]                │
 ├──────────────────────────────────────────────────────────┤
 │  År-over-år sammenligning (28d rullende snitt)           │
@@ -271,6 +300,19 @@ jobs:
 - **`avgByWeekday`**: Grupper på `getDay()`, rekkefølge man–søn, filtrerer null
 - **`heatmapData`**: Kryss av ukedag (man=0) × klokketime med snittverdi, filtrerer null
 
+### Regresjonsmodell og prognose (data.js)
+
+- **`dayOfYear(date)`**: Returnerer dag-i-året (1–366)
+- **`quadraticRegression(points)`**: Klassisk 2.grads regresjon `kWh = a + b·T + c·T²` via Cramers regel. Brukes fortsatt av scatter-chartet for den rene kvadratiske kurven
+- **`seasonalRegression(points)`**: Utvidet modell med Fourier-sesongtermer: `kWh = a + b·T + c·T² + d·sin(2π·doy/365) + e·cos(2π·doy/365)`. Bygger 5×5 normallikningssystem, løser med Gauss-eliminasjon (`solveLinearSystem`). Input: `[[temp, doy, kwh], ...]`
+- **`robustSeasonalRegression(points, madThreshold=3)`**: Wrapper rundt `seasonalRegression` med MAD-basert outlier-fjerning. Kjører regresjon → beregner residualer → MAD × 1.4826 → fjerner punkter > 3×MAD → kjører regresjon på nytt. Fjerner typisk 2–4% av punktene (elbil-lading). Returnerer `{a, b, c, d, e, removedCount}`
+- **`makePredictFn(coeffs)`**: Factory som returnerer `(temp, doy) => kWh`. Én kilde til sannhet for prediksjonsformelen. Håndterer både 3-koeff (legacy) og 5-koeff (sesong) format. Brukes av `consumptionDeviation`, `monthlyProjection` og `forecastTimeline`
+- **`consumptionDeviation(data, coeffs)`**: Beregner avvik mellom faktisk og forventet forbruk siste 24t. Bruker sesongmodell med doy for sesongkorrigert forventning
+- **`fetchForecast(lat, lon)`**: Henter temperaturprognose fra `/api/forecast`, cacher i localStorage (1t TTL)
+- **`historicalDailyTemps(data)`**: Bygger lookup `MM-DD → snitttemperatur` fra historisk data. Brukes som fallback når prognose mangler
+- **`monthlyProjection(monthData, forecast, histTemps, coeffs)`**: Beregner kumulativt forbruk for inneværende måned. Kombinerer faktisk forbruk (fortid), sesongmodell + temperaturprognose (fremtid), med usikkerhetsbånd (p10/p90). Fallback-kjede: timeprognose → dagsprognose → historisk snitt
+- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Samme fallback-kjede som monthlyProjection
+
 ## Backfill (initial datainnhenting)
 
 Kjøres én gang manuelt per hjem for å fylle databasen med historisk data:
@@ -305,3 +347,6 @@ curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000&h
 - `vercel dev` leser `.env.local` (ikke `.env`) – bruk `vercel env pull` eller opprett manuelt
 - Collect lagrer rader med null consumption (Tibber returnerer null for nylige timer) – temperaturdata bevares
 - Alle client-side beregninger håndterer null-verdier i consumption_kwh
+- met.no API-er (Locationforecast, Subseasonal) krever `User-Agent`-header – proxyes via `/api/forecast.js` for å unngå CORS
+- Sesongmodellen beregnes fra siste 1 års timedata (~8760 punkter) og brukes av alle prognosegrafer + gauge-avvik
+- MAD-outlier-fjerning er robust mot de samme outlierene den fjerner (i motsetning til standardavvik), én iterasjon er tilstrekkelig

@@ -1,5 +1,5 @@
 import { sb, getSession, signIn, signOut } from './auth.js';
-import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, quadraticRegression, consumptionDeviation } from './data.js';
+import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, robustSeasonalRegression, dayOfYear, consumptionDeviation, fetchForecast, historicalDailyTemps, monthlyProjection, forecastTimeline } from './data.js';
 import {
   renderGauge,
   renderLineChart,
@@ -8,6 +8,8 @@ import {
   renderMonthlyChangeChart,
   renderHeatmap,
   renderWeekdayChart,
+  renderCumulativeChart,
+  renderForecastChart,
   clearCharts,
   handleResize,
 } from './charts.js';
@@ -126,14 +128,15 @@ document.getElementById('home-selector').addEventListener('change', (e) => {
   loadData(currentDays);
 });
 
+let homesData = [];
+
 async function loadHomes() {
-  const { data } = await sb.from('homes').select('id, name, sort_order').order('sort_order');
+  const { data } = await sb.from('homes').select('id, name, sort_order, lat, lon').order('sort_order');
+  homesData = data || [];
   const selector = document.getElementById('home-selector');
   selector.innerHTML = '';
   selector.add(new Option('Alle', 'all'));
-  if (data) {
-    for (const home of data) selector.add(new Option(home.name, home.id));
-  }
+  for (const home of homesData) selector.add(new Option(home.name, home.id));
   selector.value = currentHomeId;
 }
 
@@ -213,16 +216,20 @@ async function loadData(days) {
     const yoyData = await fetchData(yoyDays, currentHomeId);
     const yoy = yearOverYear(yoyData, 365);
 
-    // Beregn avvik fra forventet forbruk (basert på årsmodell)
+    // Regresjonsmodell (temp → kWh) – beregnes én gang, brukes av gauge + prognose
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const regressionPoints = yoyData
       .filter(d => new Date(d.timestamp) >= oneYearAgo && d.consumption_kwh != null && d.outside_temp_c != null)
-      .map(d => [d.outside_temp_c, d.consumption_kwh]);
+      .map(d => {
+        const dt = new Date(d.timestamp);
+        return [d.outside_temp_c, dayOfYear(dt), d.consumption_kwh];
+      });
+
+    const coeffs = regressionPoints.length > 100 ? robustSeasonalRegression(regressionPoints) : null;
 
     let deviation = null;
-    if (days <= 1 && regressionPoints.length > 100) {
-      const coeffs = quadraticRegression(regressionPoints);
+    if (days <= 1 && coeffs) {
       deviation = consumptionDeviation(data, coeffs);
     }
 
@@ -244,7 +251,7 @@ async function loadData(days) {
     const scatterPanel = document.getElementById('scatter-chart').closest('.panel');
     if (days >= 365) {
       scatterPanel.classList.remove('hidden');
-      renderScatterChart(chartData);
+      renderScatterChart(chartData, coeffs);
       // Scatter-tabell
       const scatterRows = chartData
         .filter((d) => d.consumption_kwh != null && d.outside_temp_c != null)
@@ -272,6 +279,70 @@ async function loadData(days) {
       ['M\u00e5ned', 'Endring (%)'],
       yoy.monthlyChange.map((d) => [d.month, fmtPct(d.pct)])
     );
+
+    // --- Prognose: kumulativ + forecast ---
+    const cumulativePanel = document.getElementById('cumulative-panel');
+    const forecastPanel = document.getElementById('forecast-panel');
+
+    try {
+      // Finn lat/lon for gjeldende hjem (ved "Alle": bruk første hjem)
+      const homeForCoords = currentHomeId === 'all'
+        ? homesData[0]
+        : homesData.find(h => h.id === currentHomeId);
+
+      const lat = homeForCoords?.lat;
+      const lon = homeForCoords?.lon;
+
+      if (coeffs && lat != null && lon != null) {
+        const forecastData = await fetchForecast(lat, lon);
+        const histTemps = historicalDailyTemps(yoyData);
+
+        // Kumulativ strømstøtte-graf (kun individuelle hjem)
+        if (currentHomeId !== 'all') {
+          const now = new Date();
+          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          const monthData = yoyData.filter(d => new Date(d.timestamp) >= monthStart);
+          const projResult = monthlyProjection(monthData, forecastData, histTemps, coeffs);
+          cumulativePanel.classList.remove('hidden');
+          renderCumulativeChart(projResult);
+          buildTable('cumulative-chart',
+            ['Dato', 'Daglig (kWh)', 'Faktisk (kWh)', 'Projisert (kWh)', 'Høy (kWh)', 'Lav (kWh)'],
+            projResult.dates.map((d, i) => [
+              fmtTs(d + 'T00:00:00', true),
+              projResult.dailyKwh[i] != null ? Math.round(projResult.dailyKwh[i]).toString() : '\u2013',
+              projResult.actual[i] != null ? Math.round(projResult.actual[i]).toString() : '\u2013',
+              projResult.projected[i] != null ? Math.round(projResult.projected[i]).toString() : '\u2013',
+              projResult.projectedHigh[i] != null ? Math.round(projResult.projectedHigh[i]).toString() : '\u2013',
+              projResult.projectedLow[i] != null ? Math.round(projResult.projectedLow[i]).toString() : '\u2013',
+            ])
+          );
+        } else {
+          cumulativePanel.classList.add('hidden');
+        }
+
+        // Forbruksprognose-graf (alle moduser)
+        const timelineResult = forecastTimeline(yoyData, forecastData, histTemps, coeffs);
+        forecastPanel.classList.remove('hidden');
+        renderForecastChart(timelineResult);
+        buildTable('forecast-chart',
+          ['Dato', 'Forbruk (kWh)', 'Predikert (kWh)', 'Temperatur (\u00b0C)', 'Temp.prognose (\u00b0C)'],
+          timelineResult.dates.map((d, i) => [
+            fmtTs(d + 'T00:00:00', true),
+            fmtKwh(timelineResult.actualConsumption[i]),
+            fmtKwh(timelineResult.predictedConsumption[i]),
+            fmtTemp(timelineResult.actualTemp[i]),
+            fmtTemp(timelineResult.forecastTemp[i]),
+          ])
+        );
+      } else {
+        cumulativePanel.classList.add('hidden');
+        forecastPanel.classList.add('hidden');
+      }
+    } catch (forecastErr) {
+      console.warn('Prognose-beregning feilet:', forecastErr);
+      cumulativePanel.classList.add('hidden');
+      forecastPanel.classList.add('hidden');
+    }
 
     const heatmapPanel = document.getElementById('heatmap-chart').closest('.panel');
     const weekdayPanel = document.getElementById('weekday-chart').closest('.panel');

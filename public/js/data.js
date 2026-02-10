@@ -318,6 +318,124 @@ export function avgByWeekday(data) {
   }));
 }
 
+export function dayOfYear(date) {
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = date - start;
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+function solveLinearSystem(A, b) {
+  const n = A.length;
+  // Augmented matrix
+  const M = A.map((row, i) => [...row, b[i]]);
+
+  for (let col = 0; col < n; col++) {
+    // Partial pivoting
+    let maxRow = col;
+    let maxVal = Math.abs(M[col][col]);
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(M[row][col]) > maxVal) {
+        maxVal = Math.abs(M[row][col]);
+        maxRow = row;
+      }
+    }
+    if (maxVal < 1e-12) return null; // Singular
+    if (maxRow !== col) [M[col], M[maxRow]] = [M[maxRow], M[col]];
+
+    // Eliminate below
+    for (let row = col + 1; row < n; row++) {
+      const factor = M[row][col] / M[col][col];
+      for (let j = col; j <= n; j++) M[row][j] -= factor * M[col][j];
+    }
+  }
+
+  // Back substitution
+  const x = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    x[i] = M[i][n];
+    for (let j = i + 1; j < n; j++) x[i] -= M[i][j] * x[j];
+    x[i] /= M[i][i];
+  }
+  return x;
+}
+
+export function seasonalRegression(points) {
+  // points: [[temp, doy, kwh], ...]
+  // Model: kwh = a + b*T + c*T² + d*sin(2π*doy/365) + e*cos(2π*doy/365)
+  const n = points.length;
+  if (n < 6) return null;
+
+  const TWO_PI_365 = (2 * Math.PI) / 365;
+
+  // Build X'X (5x5) and X'y (5)
+  const XtX = Array.from({ length: 5 }, () => new Array(5).fill(0));
+  const Xty = new Array(5).fill(0);
+
+  for (const [temp, doy, kwh] of points) {
+    const t2 = temp * temp;
+    const sinD = Math.sin(TWO_PI_365 * doy);
+    const cosD = Math.cos(TWO_PI_365 * doy);
+    const row = [1, temp, t2, sinD, cosD];
+
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 5; j++) XtX[i][j] += row[i] * row[j];
+      Xty[i] += row[i] * kwh;
+    }
+  }
+
+  const sol = solveLinearSystem(XtX, Xty);
+  if (!sol) return null;
+  return { a: sol[0], b: sol[1], c: sol[2], d: sol[3], e: sol[4] };
+}
+
+export function robustSeasonalRegression(points, madThreshold = 3) {
+  const first = seasonalRegression(points);
+  if (!first) return null;
+
+  const TWO_PI_365 = (2 * Math.PI) / 365;
+  const predict = (temp, doy) =>
+    first.a + first.b * temp + first.c * temp * temp +
+    first.d * Math.sin(TWO_PI_365 * doy) + first.e * Math.cos(TWO_PI_365 * doy);
+
+  // Compute residuals
+  const residuals = points.map(([temp, doy, kwh]) => Math.abs(kwh - predict(temp, doy)));
+
+  // MAD (median absolute deviation)
+  const sorted = [...residuals].sort((a, b) => a - b);
+  const median = sorted.length % 2 === 0
+    ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+    : sorted[Math.floor(sorted.length / 2)];
+  const mad = median * 1.4826; // Scale to approximate std dev
+
+  if (mad < 1e-10) return { ...first, removedCount: 0 };
+
+  const threshold = madThreshold * mad;
+  const filtered = points.filter(([temp, doy, kwh]) =>
+    Math.abs(kwh - predict(temp, doy)) <= threshold
+  );
+  const removedCount = points.length - filtered.length;
+
+  if (filtered.length < 6) return { ...first, removedCount: 0 };
+
+  const refined = seasonalRegression(filtered);
+  if (!refined) return { ...first, removedCount: 0 };
+  return { ...refined, removedCount };
+}
+
+export function makePredictFn(coeffs) {
+  if (!coeffs) return null;
+  const { a, b, c, d, e } = coeffs;
+  if (d != null && e != null) {
+    const TWO_PI_365 = (2 * Math.PI) / 365;
+    return (temp, doy) => Math.max(0,
+      a + b * temp + c * temp * temp +
+      d * Math.sin(TWO_PI_365 * doy) + e * Math.cos(TWO_PI_365 * doy)
+    );
+  }
+  // Fallback for old 3-coeff format
+  return (temp) => Math.max(0, a + b * temp + c * temp * temp);
+}
+
 export function quadraticRegression(points) {
   const n = points.length;
   let sx = 0, sx2 = 0, sx3 = 0, sx4 = 0, sy = 0, sxy = 0, sx2y = 0;
@@ -361,7 +479,8 @@ export function quadraticRegression(points) {
 
 export function consumptionDeviation(data, coeffs) {
   if (!coeffs || data.length === 0) return null;
-  const { a, b, c } = coeffs;
+  const predict = makePredictFn(coeffs);
+  if (!predict) return null;
 
   const latest = new Date(data[data.length - 1].timestamp);
   const cutoff = new Date(latest);
@@ -377,12 +496,363 @@ export function consumptionDeviation(data, coeffs) {
   let actual = 0, expected = 0;
   for (const d of recent) {
     actual += d.consumption_kwh;
-    const temp = d.outside_temp_c;
-    expected += a + b * temp + c * temp * temp;
+    const dt = new Date(d.timestamp);
+    expected += predict(d.outside_temp_c, dayOfYear(dt));
   }
 
   if (expected === 0) return null;
   return ((actual - expected) / expected) * 100;
+}
+
+// --- Prognose-funksjoner ---
+
+export async function fetchForecast(lat, lon) {
+  try {
+    const cacheKey = `${CACHE_PREFIX}forecast_${lat}_${lon}`;
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Date.now() - cached.ts < CACHE_TTL) return cached.data;
+        localStorage.removeItem(cacheKey);
+      }
+    } catch {}
+
+    const resp = await fetch(`/api/forecast?lat=${lat}&lon=${lon}`);
+    if (!resp.ok) return null;
+    const json = await resp.json();
+    // { hourly: [{ time, temp, temp_p10, temp_p90 }], daily: [{ date, temp_mean, temp_p10, temp_p90 }] }
+    const result = { hourly: json.hourly || [], daily: json.daily || [] };
+
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify({ data: result, ts: Date.now() }));
+    } catch {}
+
+    return result;
+  } catch (err) {
+    console.warn('fetchForecast failed:', err.message);
+    return null;
+  }
+}
+
+export function historicalDailyTemps(data) {
+  const buckets = new Map();
+  for (const d of data) {
+    if (d.outside_temp_c == null) continue;
+    const dt = new Date(d.timestamp);
+    const key = `${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(d.outside_temp_c);
+  }
+  const result = new Map();
+  for (const [key, vals] of buckets) {
+    result.set(key, vals.reduce((s, v) => s + v, 0) / vals.length);
+  }
+  return result;
+}
+
+export function monthlyProjection(monthData, forecast, historicalTemps, coeffs) {
+  const LIMIT = 5000;
+  const predict = makePredictFn(coeffs);
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const todayDate = now.getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Build hourly forecast lookup: "YYYY-MM-DDTHH" → { temp, p10, p90 }
+  const hourlyMap = new Map();
+  if (forecast?.hourly) {
+    for (const h of forecast.hourly) {
+      const key = h.time.slice(0, 13); // "YYYY-MM-DDTHH"
+      hourlyMap.set(key, h);
+    }
+  }
+
+  // Build daily forecast lookup: date string → { temp_mean, temp_p10, temp_p90 }
+  const dailyMap = new Map();
+  if (forecast?.daily) {
+    for (const d of forecast.daily) dailyMap.set(d.date, d);
+  }
+
+  // Aggregate actual daily consumption from monthData
+  const actualDaily = new Map();
+  for (const d of monthData) {
+    if (d.consumption_kwh == null) continue;
+    const day = new Date(d.timestamp).getDate();
+    actualDaily.set(day, (actualDaily.get(day) || 0) + d.consumption_kwh);
+  }
+
+  const dates = [];
+  const actual = [];
+  const projected = [];
+  const projectedHigh = [];
+  const projectedLow = [];
+  const dailyKwh = [];
+
+  let cumActual = 0;
+  let cumProjected = 0;
+  let cumHigh = 0;
+  let cumLow = 0;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    dates.push(dateStr);
+
+    if (day < todayDate) {
+      const dayVal = actualDaily.get(day) || 0;
+      cumActual += dayVal;
+      actual.push(cumActual);
+      projected.push(null);
+      projectedHigh.push(null);
+      projectedLow.push(null);
+      dailyKwh.push(dayVal);
+    } else if (day === todayDate) {
+      // I dag: faktisk forbruk + predikert for gjenstående timer
+      const actualSoFar = actualDaily.get(day) || 0;
+      const currentHour = now.getHours();
+
+      // Tell timer med faktisk data i dag
+      const todayHours = new Set();
+      for (const d of monthData) {
+        const dt = new Date(d.timestamp);
+        if (dt.getDate() === todayDate && d.consumption_kwh != null) {
+          todayHours.add(dt.getHours());
+        }
+      }
+      const hoursWithData = todayHours.size || currentHour;
+
+      // Prediker gjenstående timer
+      let remainingKwh = 0;
+      const remainingHours = 24 - Math.max(hoursWithData, currentHour);
+      const doy = dayOfYear(new Date(dateStr));
+      if (remainingHours > 0) {
+        for (let h = 24 - remainingHours; h < 24; h++) {
+          const hKey = `${dateStr}T${String(h).padStart(2, '0')}`;
+          const hf = hourlyMap.get(hKey);
+          const t = hf?.temp ?? (dailyMap.get(dateStr)?.temp_mean ?? historicalTemps.get(`${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`) ?? 5);
+          remainingKwh += predict(t, doy);
+        }
+      }
+
+      const dayTotal = actualSoFar + remainingKwh;
+      cumActual += dayTotal;
+      actual.push(cumActual);
+      cumProjected = cumActual;
+      cumHigh = cumActual;
+      cumLow = cumActual;
+      projected.push(cumProjected);
+      projectedHigh.push(cumHigh);
+      projectedLow.push(cumLow);
+      dailyKwh.push(dayTotal);
+    } else {
+      actual.push(null);
+
+      // Samle timedata for denne dagen
+      const dayHourly = [];
+      for (let h = 0; h < 24; h++) {
+        const hKey = `${dateStr}T${String(h).padStart(2, '0')}`;
+        if (hourlyMap.has(hKey)) dayHourly.push(hourlyMap.get(hKey));
+      }
+
+      const doyFuture = dayOfYear(new Date(dateStr));
+      let dayPredicted;
+      if (dayHourly.length >= 4) {
+        let dayMean = 0, dayHigh = 0, dayLow = 0;
+        for (const hf of dayHourly) {
+          const t = hf.temp ?? 5;
+          const tp10 = hf.temp_p10 ?? t - 3;
+          const tp90 = hf.temp_p90 ?? t + 3;
+          dayMean += predict(t, doyFuture);
+          dayHigh += predict(tp10, doyFuture);
+          dayLow += predict(tp90, doyFuture);
+        }
+        const scale = 24 / dayHourly.length;
+        dayPredicted = dayMean * scale;
+        cumProjected += dayPredicted;
+        cumHigh += dayHigh * scale;
+        cumLow += dayLow * scale;
+      } else {
+        const fc = dailyMap.get(dateStr);
+        const mmdd = `${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const tempMean = fc?.temp_mean ?? historicalTemps.get(mmdd) ?? 5;
+        const tempP10 = fc?.temp_p10 ?? tempMean - 3;
+        const tempP90 = fc?.temp_p90 ?? tempMean + 3;
+        dayPredicted = predict(tempMean, doyFuture) * 24;
+        cumProjected += dayPredicted;
+        cumHigh += predict(tempP10, doyFuture) * 24;
+        cumLow += predict(tempP90, doyFuture) * 24;
+      }
+      projected.push(cumProjected);
+      projectedHigh.push(cumHigh);
+      projectedLow.push(cumLow);
+      dailyKwh.push(dayPredicted);
+    }
+  }
+
+  return {
+    dates,
+    actual,
+    projected,
+    projectedHigh,
+    projectedLow,
+    dailyKwh,
+    limit: LIMIT,
+    willExceed: (cumProjected || cumActual) > LIMIT,
+    projectedTotal: cumProjected || cumActual,
+  };
+}
+
+export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) {
+  const predict = makePredictFn(coeffs);
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  // Build hourly forecast lookup: "YYYY-MM-DDTHH" → { temp, p10, p90 }
+  const hourlyMap = new Map();
+  if (forecast?.hourly) {
+    for (const h of forecast.hourly) {
+      const key = h.time.slice(0, 13);
+      hourlyMap.set(key, h);
+    }
+  }
+
+  // Build daily forecast lookup
+  const dailyMap = new Map();
+  if (forecast?.daily) {
+    for (const d of forecast.daily) dailyMap.set(d.date, d);
+  }
+
+  const pastDays = 7;
+  const futureDays = 21;
+
+  // Aggregate recent data into daily buckets
+  const dailyBuckets = new Map();
+  for (const d of recentData) {
+    const dt = new Date(d.timestamp);
+    const dayStr = dt.toISOString().slice(0, 10);
+    if (!dailyBuckets.has(dayStr)) dailyBuckets.set(dayStr, { kwh: [], temp: [] });
+    const bucket = dailyBuckets.get(dayStr);
+    if (d.consumption_kwh != null) bucket.kwh.push(d.consumption_kwh);
+    if (d.outside_temp_c != null) bucket.temp.push(d.outside_temp_c);
+  }
+
+  const dates = [];
+  const actualConsumption = [];
+  const predictedConsumption = [];
+  const predictedHigh = [];
+  const predictedLow = [];
+  const actualTemp = [];
+  const forecastTemp = [];
+  const forecastTempP10 = [];
+  const forecastTempP90 = [];
+
+  // Past 7 days
+  for (let i = pastDays; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    dates.push(dateStr);
+
+    const bucket = dailyBuckets.get(dateStr);
+    const totalKwh = bucket?.kwh.length > 0
+      ? bucket.kwh.reduce((s, v) => s + v, 0)
+      : null;
+    const avgTemp = bucket?.temp.length > 0
+      ? bucket.temp.reduce((s, v) => s + v, 0) / bucket.temp.length
+      : null;
+
+    actualConsumption.push(totalKwh);
+    actualTemp.push(avgTemp);
+
+    if (i === 0) {
+      predictedConsumption.push(totalKwh);
+      predictedHigh.push(totalKwh);
+      predictedLow.push(totalKwh);
+      forecastTemp.push(avgTemp);
+      forecastTempP10.push(avgTemp);
+      forecastTempP90.push(avgTemp);
+    } else {
+      predictedConsumption.push(null);
+      predictedHigh.push(null);
+      predictedLow.push(null);
+      forecastTemp.push(null);
+      forecastTempP10.push(null);
+      forecastTempP90.push(null);
+    }
+  }
+
+  // Future 21 days
+  for (let i = 1; i <= futureDays; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().slice(0, 10);
+    dates.push(dateStr);
+
+    actualConsumption.push(null);
+    actualTemp.push(null);
+
+    // Samle timedata for denne dagen
+    const dayHourly = [];
+    for (let h = 0; h < 24; h++) {
+      const hKey = `${dateStr}T${String(h).padStart(2, '0')}`;
+      if (hourlyMap.has(hKey)) dayHourly.push(hourlyMap.get(hKey));
+    }
+
+    const doy = dayOfYear(d);
+    if (dayHourly.length >= 4) {
+      // Har timedata: prediker per datapunkt, skaler til dagstotal
+      let dayKwh = 0, dayHigh = 0, dayLow = 0;
+      let tempSum = 0, tp10Sum = 0, tp90Sum = 0;
+      for (const hf of dayHourly) {
+        const t = hf.temp ?? 5;
+        const tp10 = hf.temp_p10 ?? t - 3;
+        const tp90 = hf.temp_p90 ?? t + 3;
+        dayKwh += predict(t, doy);
+        dayHigh += predict(tp10, doy);
+        dayLow += predict(tp90, doy);
+        tempSum += t;
+        tp10Sum += tp10;
+        tp90Sum += tp90;
+      }
+      const n = dayHourly.length;
+      const scale = 24 / n;
+      predictedConsumption.push(dayKwh * scale);
+      predictedHigh.push(dayHigh * scale);
+      predictedLow.push(dayLow * scale);
+      forecastTemp.push(tempSum / n);
+      forecastTempP10.push(tp10Sum / n);
+      forecastTempP90.push(tp90Sum / n);
+    } else {
+      // Daglig snitt fra subseasonal eller historikk
+      const fc = dailyMap.get(dateStr);
+      const mmdd = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const tempMean = fc?.temp_mean ?? historicalTemps.get(mmdd) ?? 5;
+      const tempP10 = fc?.temp_p10 ?? tempMean - 3;
+      const tempP90 = fc?.temp_p90 ?? tempMean + 3;
+
+      predictedConsumption.push(predict(tempMean, doy) * 24);
+      predictedHigh.push(predict(tempP10, doy) * 24);
+      predictedLow.push(predict(tempP90, doy) * 24);
+      forecastTemp.push(tempMean);
+      forecastTempP10.push(tempP10);
+      forecastTempP90.push(tempP90);
+    }
+  }
+
+  return {
+    dates,
+    actualConsumption,
+    predictedConsumption,
+    predictedHigh,
+    predictedLow,
+    actualTemp,
+    forecastTemp,
+    forecastTempP10,
+    forecastTempP90,
+  };
 }
 
 export function heatmapData(data) {

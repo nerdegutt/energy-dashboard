@@ -1,4 +1,4 @@
-import { quadraticRegression } from './data.js';
+import { quadraticRegression, dayOfYear } from './data.js';
 
 const CYAN = '#22d3ee';
 const ORANGE = '#f97316';
@@ -275,7 +275,7 @@ function formatCoeff(v, decimals = 4) {
 }
 
 // --- Scatter: Temperatur vs forbruk ---
-export function renderScatterChart(data) {
+export function renderScatterChart(data, seasonalCoeffs) {
   const chart = getOrCreate('scatter-chart');
 
   const points = data
@@ -299,17 +299,114 @@ export function renderScatterChart(data) {
     quadLine.push([t, quad.a + quad.b * t + quad.c * t * t]);
   }
 
+  // Sesongkurver og R² (hvis seasonalCoeffs finnes)
+  const winterLine = [];
+  const summerLine = [];
+  let r2Seasonal = null;
+  const legendData = ['Forbruk', '1. grad', '2. grad'];
+
+  if (seasonalCoeffs && seasonalCoeffs.d != null && seasonalCoeffs.e != null) {
+    const { a, b, c, d, e } = seasonalCoeffs;
+    const TWO_PI_365 = (2 * Math.PI) / 365;
+    const winterDoy = 15;  // Midten av januar
+    const summerDoy = 196; // Midten av juli
+
+    for (let t = tMin; t <= tMax; t++) {
+      const base = a + b * t + c * t * t;
+      winterLine.push([t, Math.max(0, base + d * Math.sin(TWO_PI_365 * winterDoy) + e * Math.cos(TWO_PI_365 * winterDoy))]);
+      summerLine.push([t, Math.max(0, base + d * Math.sin(TWO_PI_365 * summerDoy) + e * Math.cos(TWO_PI_365 * summerDoy))]);
+    }
+    legendData.push('Vinter (jan)', 'Sommer (jul)');
+
+    // Sesong-R²: beregn med doy-kontekst fra originaldataene
+    const pointsWithDoy = data
+      .filter((d) => d.outside_temp_c != null && d.consumption_kwh != null)
+      .map((d) => {
+        const dt = new Date(d.timestamp);
+        return { temp: d.outside_temp_c, doy: dayOfYear(dt), kwh: d.consumption_kwh };
+      });
+
+    const meanY = pointsWithDoy.reduce((s, p) => s + p.kwh, 0) / pointsWithDoy.length;
+    let ssRes = 0, ssTot = 0;
+    for (const p of pointsWithDoy) {
+      const predicted = a + b * p.temp + c * p.temp * p.temp +
+        d * Math.sin(TWO_PI_365 * p.doy) + e * Math.cos(TWO_PI_365 * p.doy);
+      ssRes += (p.kwh - predicted) ** 2;
+      ssTot += (p.kwh - meanY) ** 2;
+    }
+    r2Seasonal = 1 - ssRes / ssTot;
+  }
+
   // Vis formler
   const formulaEl = document.getElementById('regression-formulas');
   if (formulaEl) {
-    formulaEl.innerHTML =
+    let html =
       `<span style="color:#a78bfa">1. grad: kWh = ${lin.a.toFixed(4)} ${formatCoeff(lin.b)}T &nbsp; R² = ${r2Lin.toFixed(4)}</span>` +
       `<span style="color:${ORANGE}">2. grad: kWh = ${quad.a.toFixed(4)} ${formatCoeff(quad.b)}T ${formatCoeff(quad.c)}T² &nbsp; R² = ${r2Quad.toFixed(4)}</span>`;
+    if (r2Seasonal != null) {
+      html += `<span style="color:#22c55e">Sesong: R² = ${r2Seasonal.toFixed(4)}`;
+      if (seasonalCoeffs.removedCount > 0) {
+        html += ` (${seasonalCoeffs.removedCount} outliers fjernet)`;
+      }
+      html += `</span>`;
+    }
+    formulaEl.innerHTML = html;
+  }
+
+  const series = [
+    {
+      name: 'Forbruk',
+      type: 'scatter',
+      data: points,
+      symbolSize: 7,
+      itemStyle: { color: CYAN, opacity: 0.4 },
+    },
+    {
+      name: '1. grad',
+      type: 'line',
+      data: linLine,
+      smooth: false,
+      symbol: 'none',
+      lineStyle: { color: '#a78bfa', width: 2 },
+      itemStyle: { color: '#a78bfa' },
+    },
+    {
+      name: '2. grad',
+      type: 'line',
+      data: quadLine,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color: ORANGE, width: 2 },
+      itemStyle: { color: ORANGE },
+    },
+  ];
+
+  if (winterLine.length > 0) {
+    series.push({
+      name: 'Vinter (jan)',
+      type: 'line',
+      data: winterLine,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color: '#60a5fa', width: 2, type: 'dashed' },
+      itemStyle: { color: '#60a5fa' },
+    });
+  }
+  if (summerLine.length > 0) {
+    series.push({
+      name: 'Sommer (jul)',
+      type: 'line',
+      data: summerLine,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color: '#22c55e', width: 2, type: 'dashed' },
+      itemStyle: { color: '#22c55e' },
+    });
   }
 
   chart.setOption({
     title: { text: 'Temperatur vs. forbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
-    aria: { enabled: true, label: { description: `Punktdiagram med ${points.length} datapunkter. Lineær regresjon R²=${r2Lin.toFixed(3)}, kvadratisk regresjon R²=${r2Quad.toFixed(3)}` } },
+    aria: { enabled: true, label: { description: `Punktdiagram med ${points.length} datapunkter. Lineær R²=${r2Lin.toFixed(3)}, kvadratisk R²=${r2Quad.toFixed(3)}${r2Seasonal != null ? `, sesong R²=${r2Seasonal.toFixed(3)}` : ''}` } },
     tooltip: {
       trigger: 'item',
       backgroundColor: '#1a1a2e',
@@ -321,7 +418,7 @@ export function renderScatterChart(data) {
       },
     },
     legend: {
-      data: ['Forbruk', '1. grad', '2. grad'],
+      data: legendData,
       textStyle: baseTextStyle(),
       top: 20,
     },
@@ -342,33 +439,7 @@ export function renderScatterChart(data) {
       axisLabel: baseTextStyle(),
       splitLine: baseSplitLine(),
     },
-    series: [
-      {
-        name: 'Forbruk',
-        type: 'scatter',
-        data: points,
-        symbolSize: 7,
-        itemStyle: { color: CYAN, opacity: 0.4 },
-      },
-      {
-        name: '1. grad',
-        type: 'line',
-        data: linLine,
-        smooth: false,
-        symbol: 'none',
-        lineStyle: { color: '#a78bfa', width: 2 },
-        itemStyle: { color: '#a78bfa' },
-      },
-      {
-        name: '2. grad',
-        type: 'line',
-        data: quadLine,
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { color: ORANGE, width: 2 },
-        itemStyle: { color: ORANGE },
-      },
-    ],
+    series,
   });
 
   return chart;
@@ -618,6 +689,353 @@ export function renderMonthlyChangeChart(monthlyChange) {
         fontSize: 10,
       },
     }],
+  });
+
+  return chart;
+}
+
+// --- Kumulativ strømstøtte-graf ---
+export function renderCumulativeChart(projectionData) {
+  const chart = getOrCreate('cumulative-chart');
+
+  const { dates, actual, projected, projectedHigh, projectedLow, dailyKwh, limit } = projectionData;
+
+  const todayIdx = actual.findIndex((v, i) => v != null && projected[i] != null);
+
+  // Format dates for display
+  const labels = dates.map(d => {
+    const dt = new Date(d);
+    return `${dt.getDate()}.${MONTHS_SHORT[dt.getMonth()]}`;
+  });
+
+  // Build uncertainty band as stacked areas (low base + band width)
+  const bandLow = projectedLow.map(v => v);
+  const bandWidth = projectedHigh.map((h, i) => {
+    if (h == null || projectedLow[i] == null) return null;
+    return h - projectedLow[i];
+  });
+
+  // Daily bars: color past vs projected
+  const dailyBars = dailyKwh.map((v, i) => ({
+    value: v != null ? Math.round(v) : null,
+    itemStyle: {
+      color: i <= todayIdx
+        ? 'rgba(34, 211, 238, 0.15)'
+        : 'rgba(167, 139, 250, 0.15)',
+    },
+  }));
+
+  chart.setOption({
+    title: { text: 'Strømstøtte: Kumulativt forbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: `Kumulativ graf over strømforbruk denne måneden. Projisert total: ${Math.round(projectionData.projectedTotal)} kWh. Grense: ${limit} kWh.` } },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1a1a2e',
+      borderColor: '#333',
+      textStyle: baseTextStyle(),
+      formatter: (params) => {
+        const idx = params[0].dataIndex;
+        const date = labels[idx];
+        const lines = [];
+        for (const p of params) {
+          if (['BandBase', 'Usikkerhet'].includes(p.seriesName)) continue;
+          if (p.value != null) {
+            lines.push(`${p.marker} ${p.seriesName}: ${Math.round(p.value)} kWh`);
+          }
+        }
+        if (projectedHigh[idx] != null && projectedLow[idx] != null) {
+          lines.push(`Intervall: ${Math.round(projectedLow[idx])} – ${Math.round(projectedHigh[idx])} kWh`);
+        }
+        return `${date}<br/>${lines.join('<br/>')}`;
+      },
+    },
+    legend: {
+      data: ['Faktisk', 'Projisert', 'Daglig forbruk'],
+      textStyle: baseTextStyle(),
+      top: 20,
+    },
+    grid: { left: 60, right: 50, top: 55, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      axisLine: baseAxisLine(),
+      axisLabel: baseTextStyle(),
+      splitLine: { show: false },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: 'kWh (kumulativt)',
+        nameTextStyle: baseTextStyle(),
+        axisLine: baseAxisLine(),
+        axisLabel: baseTextStyle(),
+        splitLine: baseSplitLine(),
+      },
+      {
+        type: 'value',
+        name: 'kWh/dag',
+        nameTextStyle: baseTextStyle(),
+        axisLine: { lineStyle: { color: '#a78bfa' } },
+        axisLabel: { ...baseTextStyle(), color: '#a78bfa' },
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        name: 'Daglig forbruk',
+        type: 'bar',
+        yAxisIndex: 1,
+        data: dailyBars,
+        barMaxWidth: 16,
+        z: 0,
+      },
+      {
+        name: 'Faktisk',
+        type: 'line',
+        data: actual,
+        smooth: true,
+        symbol: 'none',
+        itemStyle: { color: CYAN },
+        lineStyle: { color: CYAN, width: 2 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(34, 211, 238, 0.25)' },
+            { offset: 1, color: 'rgba(34, 211, 238, 0)' },
+          ]),
+        },
+        z: 2,
+      },
+      {
+        name: 'Projisert',
+        type: 'line',
+        data: projected,
+        smooth: true,
+        symbol: 'none',
+        itemStyle: { color: CYAN },
+        lineStyle: { color: CYAN, width: 2, type: 'dashed' },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { color: '#ef4444', width: 1.5, type: 'dashed' },
+          data: [{ yAxis: limit, label: { formatter: `${limit} kWh`, color: '#ef4444', fontFamily: FONT, fontSize: 10 } }],
+        },
+        z: 2,
+      },
+      {
+        name: 'BandBase',
+        type: 'line',
+        data: bandLow,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { opacity: 0 },
+        stack: 'band',
+        areaStyle: { opacity: 0 },
+        tooltip: { show: false },
+      },
+      {
+        name: 'Usikkerhet',
+        type: 'line',
+        data: bandWidth,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { opacity: 0 },
+        stack: 'band',
+        areaStyle: { color: 'rgba(34, 211, 238, 0.18)' },
+        tooltip: { show: false },
+      },
+    ],
+  });
+
+  return chart;
+}
+
+// --- Forbruksprognose-graf ---
+export function renderForecastChart(timelineData) {
+  const chart = getOrCreate('forecast-chart');
+
+  const { dates, actualConsumption, predictedConsumption, predictedHigh, predictedLow,
+          actualTemp, forecastTemp, forecastTempP10, forecastTempP90 } = timelineData;
+
+  const labels = dates.map(d => {
+    const dt = new Date(d);
+    return `${dt.getDate()}.${MONTHS_SHORT[dt.getMonth()]}`;
+  });
+
+  // Consumption uncertainty band
+  const consBandLow = predictedLow.map(v => v);
+  const consBandWidth = predictedHigh.map((h, i) => {
+    if (h == null || predictedLow[i] == null) return null;
+    return h - predictedLow[i];
+  });
+
+  // Offset alle temperaturverdier med +100 slik at stacked area fungerer med negative verdier
+  const TEMP_OFFSET = 100;
+  const offsetTemp = (v) => v != null ? v + TEMP_OFFSET : null;
+
+  const actualTempOffset = actualTemp.map(offsetTemp);
+  const forecastTempOffset = forecastTemp.map(offsetTemp);
+  const tempBandLow = forecastTempP10.map(offsetTemp);
+  const tempBandWidth = forecastTempP90.map((h, i) => {
+    if (h == null || forecastTempP10[i] == null) return null;
+    return h - forecastTempP10[i]; // Bredden er uavhengig av offset
+  });
+
+  chart.setOption({
+    title: { text: 'Forbruksprognose (7d + 21d)', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: 'Forbruksprognose: 7 dager tilbake med faktisk forbruk og 21 dager fremover med predikert forbruk basert på temperaturprognose' } },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1a1a2e',
+      borderColor: '#333',
+      textStyle: baseTextStyle(),
+      formatter: (params) => {
+        const idx = params[0].dataIndex;
+        const date = labels[idx];
+        const lines = [];
+        for (const p of params) {
+          if (['ConsBandBase', 'ConsUsikkerhet', 'TempBandBase', 'TempUsikkerhet'].includes(p.seriesName)) continue;
+          if (p.value != null) {
+            const isTemp = p.seriesName.includes('Temp') || p.seriesName.includes('temp');
+            const val = isTemp ? p.value - TEMP_OFFSET : p.value;
+            const unit = isTemp ? '°C' : 'kWh';
+            lines.push(`${p.marker} ${p.seriesName}: ${Number(val).toFixed(2)} ${unit}`);
+          }
+        }
+        return `${date}<br/>${lines.join('<br/>')}`;
+      },
+    },
+    legend: {
+      data: ['Forbruk', 'Predikert forbruk', 'Temperatur', 'Temp.prognose'],
+      textStyle: baseTextStyle(),
+      top: 20,
+    },
+    grid: { left: 50, right: 50, top: 55, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      axisLine: baseAxisLine(),
+      axisLabel: baseTextStyle(),
+      splitLine: { show: false },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: 'kWh',
+        nameTextStyle: baseTextStyle(),
+        axisLine: baseAxisLine(),
+        axisLabel: baseTextStyle(),
+        splitLine: baseSplitLine(),
+      },
+      {
+        type: 'value',
+        name: '°C',
+        nameTextStyle: baseTextStyle(),
+        axisLine: { lineStyle: { color: ORANGE } },
+        axisLabel: { ...baseTextStyle(), color: ORANGE, formatter: (v) => `${Math.round(v - TEMP_OFFSET)}` },
+        splitLine: { show: false },
+        min: (value) => Math.floor(value.min - 2),
+      },
+    ],
+    series: [
+      // Actual consumption
+      {
+        name: 'Forbruk',
+        type: 'line',
+        data: actualConsumption,
+        smooth: true,
+        symbol: 'none',
+        itemStyle: { color: CYAN },
+        lineStyle: { color: CYAN, width: 2 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(34, 211, 238, 0.15)' },
+            { offset: 1, color: 'rgba(34, 211, 238, 0)' },
+          ]),
+        },
+      },
+      // Predicted consumption
+      {
+        name: 'Predikert forbruk',
+        type: 'line',
+        data: predictedConsumption,
+        smooth: true,
+        symbol: 'none',
+        itemStyle: { color: CYAN },
+        lineStyle: { color: CYAN, width: 2, type: 'dashed' },
+      },
+      // Consumption band base (invisible)
+      {
+        name: 'ConsBandBase',
+        type: 'line',
+        data: consBandLow,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { opacity: 0 },
+        stack: 'consBand',
+        areaStyle: { opacity: 0 },
+        tooltip: { show: false },
+      },
+      // Consumption band width
+      {
+        name: 'ConsUsikkerhet',
+        type: 'line',
+        data: consBandWidth,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { opacity: 0 },
+        stack: 'consBand',
+        areaStyle: { color: 'rgba(34, 211, 238, 0.1)' },
+        tooltip: { show: false },
+      },
+      // Actual temperature (offset)
+      {
+        name: 'Temperatur',
+        type: 'line',
+        data: actualTempOffset,
+        yAxisIndex: 1,
+        smooth: true,
+        symbol: 'none',
+        itemStyle: { color: ORANGE },
+        lineStyle: { color: ORANGE, width: 1.5 },
+      },
+      // Forecast temperature (offset)
+      {
+        name: 'Temp.prognose',
+        type: 'line',
+        data: forecastTempOffset,
+        yAxisIndex: 1,
+        smooth: true,
+        symbol: 'none',
+        itemStyle: { color: ORANGE },
+        lineStyle: { color: ORANGE, width: 1.5, type: 'dashed' },
+      },
+      // Temperature band base (offset, invisible)
+      {
+        name: 'TempBandBase',
+        type: 'line',
+        data: tempBandLow,
+        yAxisIndex: 1,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { opacity: 0 },
+        stack: 'tempBand',
+        areaStyle: { opacity: 0 },
+        tooltip: { show: false },
+      },
+      // Temperature band width
+      {
+        name: 'TempUsikkerhet',
+        type: 'line',
+        data: tempBandWidth,
+        yAxisIndex: 1,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { opacity: 0 },
+        stack: 'tempBand',
+        areaStyle: { color: 'rgba(249, 115, 22, 0.12)' },
+        tooltip: { show: false },
+      },
+    ],
   });
 
   return chart;

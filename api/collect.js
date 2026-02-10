@@ -21,7 +21,7 @@ module.exports = async function handler(req, res) {
     );
 
     // --- Hent homes fra DB ---
-    let homesQuery = supabase.from('homes').select('id').order('sort_order');
+    let homesQuery = supabase.from('homes').select('id, frost_station').order('sort_order');
     if (filterHomeId) homesQuery = homesQuery.eq('id', filterHomeId);
     const { data: homes, error: homesError } = await homesQuery;
     if (homesError) throw homesError;
@@ -48,12 +48,31 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ message: 'No data returned', upserted: 0 });
     }
 
-    // --- Frost (temperatur, én gang for alle hjem) ---
-    const tempMap = await fetchTemperatures(allNodes);
+    // --- Frost (temperatur, én gang per unik stasjon) ---
+    const stationToHomes = new Map();
+    for (const home of homes) {
+      const station = home.frost_station || 'SN17280';
+      if (!stationToHomes.has(station)) stationToHomes.set(station, []);
+      stationToHomes.get(station).push(home.id);
+    }
+
+    const tempMapByStation = new Map();
+    for (const station of stationToHomes.keys()) {
+      tempMapByStation.set(station, await fetchTemperatures(allNodes, station));
+    }
+
+    // Map homeId → tempMap
+    const tempMapByHome = new Map();
+    for (const [station, homeIds] of stationToHomes) {
+      for (const hid of homeIds) {
+        tempMapByHome.set(hid, tempMapByStation.get(station));
+      }
+    }
 
     // --- Bygg rader med home_id og upsert ---
     let totalUpserted = 0;
     for (const { homeId, nodes } of allNodesByHome) {
+      const tempMap = tempMapByHome.get(homeId) || new Map();
       const rowMap = new Map();
       for (const n of nodes) {
         const ts = new Date(n.from).toISOString();
@@ -158,7 +177,7 @@ async function fetchPaginated(homeId, totalHours) {
   return allNodes;
 }
 
-async function fetchTemperatures(consumptionNodes) {
+async function fetchTemperatures(consumptionNodes, station = 'SN17280') {
   const tempMap = new Map();
 
   try {
@@ -170,7 +189,7 @@ async function fetchTemperatures(consumptionNodes) {
 
     const refTime = `${minDate.toISOString().slice(0, 16)}/${maxDate.toISOString().slice(0, 16)}`;
     const params = new URLSearchParams({
-      sources: 'SN17280',
+      sources: station,
       elements: 'air_temperature',
       referencetime: refTime,
       timeresolutions: 'PT1H',
