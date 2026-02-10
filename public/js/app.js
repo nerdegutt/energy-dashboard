@@ -22,6 +22,7 @@ const logoutBtn = document.getElementById('logout-btn');
 const periodSelector = document.getElementById('period-selector');
 
 let currentDays = 1;
+let currentHomeId = 'all';
 
 // --- Datatabell ---
 const WEEKDAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
@@ -94,6 +95,25 @@ document.getElementById('refresh-btn').addEventListener('click', () => {
   loadData(currentDays);
 });
 
+// --- Home selector ---
+document.getElementById('home-selector').addEventListener('change', (e) => {
+  currentHomeId = e.target.value;
+  clearCache();
+  announce(`Viser ${e.target.options[e.target.selectedIndex].textContent}`);
+  loadData(currentDays);
+});
+
+async function loadHomes() {
+  const { data } = await sb.from('homes').select('id, name, sort_order').order('sort_order');
+  const selector = document.getElementById('home-selector');
+  selector.innerHTML = '';
+  selector.add(new Option('Alle', 'all'));
+  if (data) {
+    for (const home of data) selector.add(new Option(home.name, home.id));
+  }
+  selector.value = currentHomeId;
+}
+
 // --- Period selector ---
 const periodLabels = { 1: '24 timer', 7: '7 dager', 28: '28 dager', 365: '1 år' };
 
@@ -123,11 +143,12 @@ function showLogin() {
   if (emailInput) setTimeout(() => emailInput.focus(), 100);
 }
 
-function showDashboard() {
+async function showDashboard() {
   loginScreen.classList.add('hidden');
   dashboard.classList.remove('hidden');
   const heading = dashboard.querySelector('h1');
   if (heading) setTimeout(() => heading.focus(), 100);
+  await loadHomes();
   loadData(currentDays);
 }
 
@@ -138,7 +159,7 @@ async function loadData(days) {
   announce('Henter data...');
 
   try {
-    const data = await fetchData(days);
+    const data = await fetchData(days, currentHomeId);
 
     if (data.length === 0) {
       loading.classList.add('hidden');
@@ -160,7 +181,7 @@ async function loadData(days) {
     const twoYearsAgo = new Date();
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
     const yoyDays = Math.ceil((Date.now() - twoYearsAgo.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const yoyData = await fetchData(yoyDays);
+    const yoyData = await fetchData(yoyDays, currentHomeId);
     const yoy = yearOverYear(yoyData, 365);
 
     renderGauge(data, days);

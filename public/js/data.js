@@ -9,25 +9,45 @@ export function clearCache() {
   }
 }
 
-function getCache(days) {
+function getCache(days, homeId) {
   try {
-    const raw = localStorage.getItem(CACHE_PREFIX + days);
+    const raw = localStorage.getItem(`${CACHE_PREFIX}${homeId}_${days}`);
     if (!raw) return null;
     const cached = JSON.parse(raw);
     if (Date.now() - cached.ts < CACHE_TTL) return cached.data;
-    localStorage.removeItem(CACHE_PREFIX + days);
+    localStorage.removeItem(`${CACHE_PREFIX}${homeId}_${days}`);
   } catch {}
   return null;
 }
 
-function setCache(days, data) {
+function setCache(days, homeId, data) {
   try {
-    localStorage.setItem(CACHE_PREFIX + days, JSON.stringify({ data, ts: Date.now() }));
+    localStorage.setItem(`${CACHE_PREFIX}${homeId}_${days}`, JSON.stringify({ data, ts: Date.now() }));
   } catch {}
 }
 
-export async function fetchData(days) {
-  const cached = getCache(days);
+function mergeHomes(rows) {
+  const grouped = new Map();
+  for (const r of rows) {
+    const key = r.timestamp;
+    if (!grouped.has(key)) {
+      grouped.set(key, { timestamp: key, kwh: [], temp: null });
+    }
+    const g = grouped.get(key);
+    if (r.consumption_kwh != null) g.kwh.push(r.consumption_kwh);
+    if (r.outside_temp_c != null && g.temp == null) g.temp = r.outside_temp_c;
+  }
+  return [...grouped.values()]
+    .map((g) => ({
+      timestamp: g.timestamp,
+      consumption_kwh: g.kwh.length > 0 ? g.kwh.reduce((s, v) => s + v, 0) : null,
+      outside_temp_c: g.temp,
+    }))
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+export async function fetchData(days, homeId = 'all') {
+  const cached = getCache(days, homeId);
   if (cached) return cached;
 
   const since = new Date();
@@ -38,12 +58,18 @@ export async function fetchData(days) {
   let from = 0;
 
   while (true) {
-    const { data, error } = await sb
+    let query = sb
       .from('consumption')
-      .select('timestamp, consumption_kwh, outside_temp_c')
+      .select('timestamp, consumption_kwh, outside_temp_c, home_id')
       .gte('timestamp', since.toISOString())
       .order('timestamp', { ascending: true })
       .range(from, from + pageSize - 1);
+
+    if (homeId !== 'all') {
+      query = query.eq('home_id', homeId);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     if (!data || data.length === 0) break;
@@ -53,8 +79,9 @@ export async function fetchData(days) {
     from += pageSize;
   }
 
-  setCache(days, all);
-  return all;
+  const result = homeId === 'all' ? mergeHomes(all) : all;
+  setCache(days, homeId, result);
+  return result;
 }
 
 export function fillMissingHours(data, days) {

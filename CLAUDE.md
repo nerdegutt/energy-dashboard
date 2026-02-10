@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Oversikt
 
-Personlig strømforbruk-dashboard som henter timedata fra Tibber API, lagrer i Supabase, og visualiserer med ECharts. Hostet på Vercel. Grafana-inspirert mørkt tema.
+Personlig strømforbruk-dashboard som henter timedata fra Tibber API, lagrer i Supabase, og visualiserer med ECharts. Hostet på Vercel. Grafana-inspirert mørkt tema. Støtter flere hjem (Tibber homes) via `homes`-tabell – brukeren velger hjem via dropdown i headeren.
 
 ## Utvikling
 
@@ -39,9 +39,9 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 ├── public/
 │   ├── index.html           # HTML-skjelett, CDN-imports, login-skjerm, dashboard-layout
 │   └── js/
-│       ├── app.js           # Entry point: auth, periodevelger, datatabeller, orkestrering
+│       ├── app.js           # Entry point: auth, periodevelger, hjemvelger, datatabeller, orkestrering
 │       ├── auth.js          # Supabase-klient, login/logout, session-håndtering
-│       ├── data.js          # Hent data fra Supabase, cache, beregninger
+│       ├── data.js          # Hent data fra Supabase, cache, beregninger, mergeHomes()
 │       └── charts.js        # Alle 7 ECharts-konfigurasjoner og rendering
 ├── package.json             # Avhengighet: @supabase/supabase-js
 ├── vercel.json              # Vercel-konfigurasjon (maxDuration: 60 for collect)
@@ -66,21 +66,32 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 
 ## Supabase
 
-### Tabell
+### Tabeller
 
 ```sql
-CREATE TABLE consumption (
-  timestamp TIMESTAMPTZ PRIMARY KEY,
-  consumption_kwh NUMERIC,
-  outside_temp_c NUMERIC
+CREATE TABLE homes (
+  id TEXT PRIMARY KEY,        -- Tibber home ID
+  name TEXT NOT NULL,         -- Visningsnavn ("Hjemme", "Hytta")
+  sort_order INT DEFAULT 0
 );
+
+CREATE TABLE consumption (
+  home_id TEXT NOT NULL REFERENCES homes(id),
+  timestamp TIMESTAMPTZ NOT NULL,
+  consumption_kwh NUMERIC,
+  outside_temp_c NUMERIC,
+  PRIMARY KEY (home_id, timestamp)
+);
+CREATE INDEX idx_consumption_timestamp ON consumption (timestamp);
 ```
 
 - `consumption_kwh` tillater NULL (Tibber returnerer null for nylige timer som ikke er aggregert ennå)
+- `home_id` refererer til `homes`-tabellen – hvert hjem har egne forbruksrader
+- Homes konfigureres direkte i `homes`-tabellen (ikke via env vars)
 
 ### RLS
 
-- Row Level Security aktivert på `consumption`-tabellen
+- Row Level Security aktivert på `consumption`- og `homes`-tabellene
 - Policy: Tillat `SELECT` kun for autentiserte brukere
 - Frontend spør Supabase direkte – ingen egen API-rute for lesing
 
@@ -95,12 +106,13 @@ CREATE TABLE consumption (
 
 ```
 TIBBER_API_TOKEN=           # Fra developer.tibber.com
-TIBBER_HOME_ID=             # Home ID fra Tibber (finn via API explorer)
 SUPABASE_URL=               # Supabase prosjekt-URL
 SUPABASE_SERVICE_KEY=       # Supabase service_role key (kun server-side)
 CRON_SECRET=                # Hemmelig nøkkel for å sikre collect-endepunktet
 FROST_CLIENT_ID=            # Fra frost.met.no
 ```
+
+- Home IDs konfigureres i `homes`-tabellen i Supabase, ikke som env var
 
 ### GitHub Actions (Settings → Secrets and variables → Actions)
 
@@ -116,8 +128,9 @@ FROST_CLIENT_ID=            # Fra frost.met.no
 
 ### Tibber API
 - Direkte GraphQL-kall med native fetch mot `https://api.tibber.com/v1-beta/gql`
-- Henter for spesifikt hjem via `TIBBER_HOME_ID`
-- Default: hent siste 24 timer (`last: 24`)
+- Henter homes fra `homes`-tabellen i Supabase, looper over alle
+- Støtter `?home=<id>` query parameter for å kjøre innsamling for ett spesifikt hjem (nyttig for backfill)
+- Default: hent siste 72 timer (`last: 72`)
 - Støtter `?hours=N` query parameter for backfill
 - For hours > 744: paginerer med `first`/`after` i batches à 744
 
@@ -129,8 +142,10 @@ FROST_CLIENT_ID=            # Fra frost.met.no
 - Frost-feil stopper ikke innsamlingen – temperatur settes til null
 
 ### Upsert til Supabase
-- Dedupliserer rader på timestamp (Map) før innsetting
-- Upsert i chunks à 1000 rader med `onConflict: 'timestamp'`
+- Dedupliserer rader på timestamp per hjem (Map) før innsetting
+- Legg til `home_id` i hver rad
+- Upsert i chunks à 1000 rader med `onConflict: 'home_id,timestamp'`
+- Frost-temperatur hentes én gang (utenfor home-loopen) og deles mellom alle hjem
 - Idempotent – gjentatte kjøringer er trygge
 
 ## GitHub Actions Workflow
@@ -168,10 +183,12 @@ jobs:
 ### Data-henting og cache
 - Frontend spør Supabase direkte (ingen `/api/data.js`-rute)
 - Paginerer i batches à 1000 rader (Supabase default-limit)
-- **localStorage-cache** med 1 times TTL per periode
+- **localStorage-cache** med 1 times TTL per periode og hjem (nøkkel: `energy_<homeId>_<days>`)
+- Bytte av hjem tømmer cache og henter ferske data
 - Refresh-knapp tømmer cache og henter ferske data
 - **Manglende timer fylles inn** med null-verdier (`fillMissingHours`) for komplett tidsrekke
 - Alle beregninger (snitt, heatmap, weekday) filtrerer bort null-verdier
+- **"Alle"-modus**: `mergeHomes()` summerer `consumption_kwh` per timestamp og beholder første `outside_temp_c`
 
 ### Periodevelger og aggregering
 - **24t**: Timedata, x-akse viser klokkeslett (hver 3. time), ingen rullende snitt
@@ -205,7 +222,7 @@ jobs:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Strømforbruk           [24t 7d 28d 1y] [↻] [Logg ut]   │
+│  Strømforbruk  [▾ Alle] [24t 7d 28d 1y] [↻] [Logg ut]   │
 ├──────────┬───────────────────────────────────────────────┤
 │  GAUGE   │  Linjegraf (dual-axis)                        │
 │  snitt   │  - Forbruk (cyan) + rullende snitt (lilla)    │
@@ -237,6 +254,7 @@ jobs:
 
 ### Client-side beregninger (data.js)
 
+- **`mergeHomes`**: Grupperer rader per timestamp, summerer `consumption_kwh`, beholder første `outside_temp_c` (brukes for "Alle"-visning)
 - **`fillMissingHours`**: Fyller inn manglende timer med null-verdier for komplett tidsrekke
 - **`rollingAverage`**: Sliding window (24 timer eller 7 dager), filtrerer null
 - **`dailyAverage`**: Aggregering per dato for årsvisning, filtrerer null
@@ -246,15 +264,21 @@ jobs:
 
 ## Backfill (initial datainnhenting)
 
-Kjøres én gang manuelt for å fylle databasen med historisk data:
+Kjøres én gang manuelt per hjem for å fylle databasen med historisk data:
 
 ```bash
+# Alle hjem:
 curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000" \
+  -H "x-cron-secret: din-nøkkel"
+
+# Spesifikt hjem:
+curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000&home=<TIBBER_HOME_ID>" \
   -H "x-cron-secret: din-nøkkel"
 ```
 
 - Tibber har data 1-2 år tilbake
 - `hours=100000` henter alt som finnes (returnerer bare det som eksisterer)
+- `home=<id>` begrenser til ett hjem (nyttig ved nytt hjem uten å kjøre alle på nytt)
 - Funksjonen paginerer automatisk i batches à 744 timer
 - Deduplisering sikrer at gjentatte kjøringer er trygge
 
@@ -267,7 +291,7 @@ curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000" 
 - Supabase anon key er trygg å eksponere i frontend – sikkerhet styres av RLS
 - Supabase service key brukes KUN i `api/collect.js`, aldri i frontend
 - Vercel free tier (Hobby) er tilstrekkelig – cron håndteres av GitHub Actions
-- Supabase free tier holder i årevis med denne datamengden (~8760 rader/år)
+- Supabase free tier holder i årevis med denne datamengden (~8760 rader/år per hjem)
 - GitHub Actions cron er ikke presis (5-15 min forsinkelse), men irrelevant for timedata
 - `vercel dev` leser `.env.local` (ikke `.env`) – bruk `vercel env pull` eller opprett manuelt
 - Collect lagrer rader med null consumption (Tibber returnerer null for nylige timer) – temperaturdata bevares

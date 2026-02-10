@@ -12,65 +12,76 @@ module.exports = async function handler(req, res) {
   }
 
   const hours = parseInt(req.query.hours) || 72;
+  const filterHomeId = req.query.home || null;
 
   try {
-    // --- Tibber ---
-    const homeId = process.env.TIBBER_HOME_ID;
-
-    let consumptionNodes;
-    if (hours <= 744) {
-      consumptionNodes = await fetchTibber(homeId, `last: ${hours}`);
-    } else {
-      consumptionNodes = await fetchPaginated(homeId, hours);
-    }
-
-    // Filtrer ut noder uten timestamp
-    consumptionNodes = consumptionNodes.filter((n) => n && n.from);
-
-    if (consumptionNodes.length === 0) {
-      return res.status(200).json({ message: 'No data returned', upserted: 0 });
-    }
-
-    // --- Frost (temperatur) ---
-    const tempMap = await fetchTemperatures(consumptionNodes);
-
-    // --- Upsert til Supabase ---
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    const rowMap = new Map();
-    for (const n of consumptionNodes) {
-      const ts = new Date(n.from).toISOString();
-      const hourKey = ts.slice(0, 13); // "YYYY-MM-DDTHH"
-      rowMap.set(ts, {
-        timestamp: ts,
-        consumption_kwh: n.consumption ?? null,
-        outside_temp_c: tempMap.get(hourKey) ?? null,
-      });
-    }
-    const rows = [...rowMap.values()];
-
-    // Upsert i chunks à 1000
-    let upserted = 0;
-    for (let i = 0; i < rows.length; i += 1000) {
-      const chunk = rows.slice(i, i + 1000);
-      const { error } = await supabase
-        .from('consumption')
-        .upsert(chunk, { onConflict: 'timestamp' });
-      if (error) throw error;
-      upserted += chunk.length;
+    // --- Hent homes fra DB ---
+    let homesQuery = supabase.from('homes').select('id').order('sort_order');
+    if (filterHomeId) homesQuery = homesQuery.eq('id', filterHomeId);
+    const { data: homes, error: homesError } = await homesQuery;
+    if (homesError) throw homesError;
+    if (!homes || homes.length === 0) {
+      return res.status(400).json({ error: 'No homes found' });
     }
 
-    const firstTs = rows[0]?.timestamp;
-    const lastTs = rows[rows.length - 1]?.timestamp;
+    // --- Tibber: hent data for hvert hjem ---
+    const allNodesByHome = [];
+    for (const home of homes) {
+      let nodes;
+      if (hours <= 744) {
+        nodes = await fetchTibber(home.id, `last: ${hours}`);
+      } else {
+        nodes = await fetchPaginated(home.id, hours);
+      }
+      nodes = nodes.filter((n) => n && n.from);
+      allNodesByHome.push({ homeId: home.id, nodes });
+    }
+
+    // Samle alle noder for Frost-oppslag
+    const allNodes = allNodesByHome.flatMap((h) => h.nodes);
+    if (allNodes.length === 0) {
+      return res.status(200).json({ message: 'No data returned', upserted: 0 });
+    }
+
+    // --- Frost (temperatur, én gang for alle hjem) ---
+    const tempMap = await fetchTemperatures(allNodes);
+
+    // --- Bygg rader med home_id og upsert ---
+    let totalUpserted = 0;
+    for (const { homeId, nodes } of allNodesByHome) {
+      const rowMap = new Map();
+      for (const n of nodes) {
+        const ts = new Date(n.from).toISOString();
+        const hourKey = ts.slice(0, 13);
+        rowMap.set(ts, {
+          home_id: homeId,
+          timestamp: ts,
+          consumption_kwh: n.consumption ?? null,
+          outside_temp_c: tempMap.get(hourKey) ?? null,
+        });
+      }
+      const rows = [...rowMap.values()];
+
+      for (let i = 0; i < rows.length; i += 1000) {
+        const chunk = rows.slice(i, i + 1000);
+        const { error } = await supabase
+          .from('consumption')
+          .upsert(chunk, { onConflict: 'home_id,timestamp' });
+        if (error) throw error;
+        totalUpserted += chunk.length;
+      }
+    }
 
     return res.status(200).json({
       message: 'OK',
-      upserted,
+      homes: homes.map((h) => h.id),
+      upserted: totalUpserted,
       tempPoints: tempMap.size,
-      range: { from: firstTs, to: lastTs },
     });
   } catch (err) {
     console.error('collect error:', err);
