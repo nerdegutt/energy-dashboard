@@ -84,6 +84,20 @@ module.exports = async function handler(req, res) {
           outside_temp_c: tempMap.get(hourKey) ?? null,
         });
       }
+
+      // Legg til rader for temperatur-timer som Tibber ikke har levert ennå
+      for (const [hourKey, temp] of tempMap) {
+        const ts = new Date(hourKey + ':00:00.000Z').toISOString();
+        if (!rowMap.has(ts)) {
+          rowMap.set(ts, {
+            home_id: homeId,
+            timestamp: ts,
+            consumption_kwh: null,
+            outside_temp_c: temp,
+          });
+        }
+      }
+
       const rows = [...rowMap.values()];
 
       for (let i = 0; i < rows.length; i += 1000) {
