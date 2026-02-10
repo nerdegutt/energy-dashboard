@@ -55,7 +55,7 @@ function mergeHomes(rows) {
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
-export async function fetchData(days, homeId = 'all') {
+async function fetchSingleHome(days, homeId) {
   const cached = getCache(days, homeId);
   if (cached) return cached;
 
@@ -67,18 +67,13 @@ export async function fetchData(days, homeId = 'all') {
   let from = 0;
 
   while (true) {
-    let query = sb
+    const { data, error } = await sb
       .from('consumption')
       .select('timestamp, consumption_kwh, outside_temp_c, home_id')
+      .eq('home_id', homeId)
       .gte('timestamp', since.toISOString())
       .order('timestamp', { ascending: true })
       .range(from, from + pageSize - 1);
-
-    if (homeId !== 'all') {
-      query = query.eq('home_id', homeId);
-    }
-
-    const { data, error } = await query;
 
     if (error) throw error;
     if (!data || data.length === 0) break;
@@ -88,9 +83,24 @@ export async function fetchData(days, homeId = 'all') {
     from += pageSize;
   }
 
-  const result = homeId === 'all' ? mergeHomes(all) : all;
-  setCache(days, homeId, result);
-  return result;
+  setCache(days, homeId, all);
+  return all;
+}
+
+export async function fetchData(days, homeId = 'all') {
+  const cached = getCache(days, homeId);
+  if (cached) return cached;
+
+  if (homeId === 'all') {
+    const { data: homes } = await sb.from('homes').select('id').order('sort_order');
+    if (!homes || homes.length === 0) return [];
+    const perHome = await Promise.all(homes.map(h => fetchSingleHome(days, h.id)));
+    const result = mergeHomes(perHome.flat());
+    setCache(days, homeId, result);
+    return result;
+  }
+
+  return fetchSingleHome(days, homeId);
 }
 
 export function fillMissingHours(data, days) {
