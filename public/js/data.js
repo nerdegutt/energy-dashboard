@@ -115,11 +115,14 @@ export async function fetchData(days, homeId = 'all') {
 }
 
 export function fillMissingHours(data, days) {
+  if (data.length === 0) return data;
+
+  // Start fra første datapunkt, slutt ved siste hele time (forrige time)
+  const first = new Date(data[0].timestamp);
+  first.setMinutes(0, 0, 0);
+
   const now = new Date();
   now.setMinutes(0, 0, 0);
-  const start = new Date(now);
-  start.setDate(start.getDate() - days);
-  // Stopp ved siste hele time (forrige time), ikke pågående time
   now.setHours(now.getHours() - 1);
 
   const lookup = new Map();
@@ -129,7 +132,7 @@ export function fillMissingHours(data, days) {
   }
 
   const result = [];
-  const cursor = new Date(start);
+  const cursor = new Date(first);
   while (cursor <= now) {
     const key = cursor.toISOString().slice(0, 13);
     if (lookup.has(key)) {
