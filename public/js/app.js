@@ -122,7 +122,6 @@ document.getElementById('refresh-btn').addEventListener('click', () => {
 document.getElementById('home-selector').addEventListener('change', (e) => {
   currentHomeId = e.target.value;
   updateUrl();
-  clearCache();
   announce(`Viser ${e.target.options[e.target.selectedIndex].textContent}`);
   loadData(currentDays);
 });
