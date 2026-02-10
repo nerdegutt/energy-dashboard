@@ -8,6 +8,7 @@ import {
   renderMonthlyChangeChart,
   renderHeatmap,
   renderWeekdayChart,
+  clearCharts,
   handleResize,
 } from './charts.js';
 
@@ -181,6 +182,7 @@ async function showDashboard() {
 }
 
 async function loadData(days) {
+  clearCharts();
   loading.classList.remove('hidden');
   emptyState.classList.add('hidden');
   chartsContainer.classList.add('hidden');

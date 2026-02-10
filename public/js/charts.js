@@ -749,6 +749,12 @@ export function renderWeekdayChart(weekdayData) {
 }
 
 // Resize alle grafer ved vindusendring
+export function clearCharts() {
+  for (const chart of Object.values(instances)) {
+    chart.clear();
+  }
+}
+
 export function handleResize() {
   for (const chart of Object.values(instances)) {
     chart.resize();
