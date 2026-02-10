@@ -267,7 +267,7 @@ jobs:
 - **`fillMissingHours`**: Fyller inn manglende timer med null-verdier for komplett tidsrekke
 - **`rollingAverage`**: Sliding window (24 timer eller 7 dager), filtrerer null
 - **`dailyAverage`**: Aggregering per dato for årsvisning, filtrerer null
-- **`yearOverYear`**: Sammenligner siste år med 1 år tilbake (dato-for-dato via `setFullYear`), 28d rullende snitt, månedlig prosentvis endring
+- **`yearOverYear`**: Sammenligner siste år med 1 år tilbake (dato-for-dato via `setFullYear`), 14d sentrert rullende snitt (±7 dager), månedlig prosentvis endring. Skuddår: 29. feb matcher 1. mars i ikke-skuddår (JavaScript `setFullYear`-adferd), jevnes ut av rullende snitt
 - **`avgByWeekday`**: Grupper på `getDay()`, rekkefølge man–søn, filtrerer null
 - **`heatmapData`**: Kryss av ukedag (man=0) × klokketime med snittverdi, filtrerer null
 
