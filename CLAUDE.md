@@ -39,7 +39,7 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 ├── public/
 │   ├── index.html           # HTML-skjelett, CDN-imports, login-skjerm, dashboard-layout
 │   └── js/
-│       ├── app.js           # Entry point: auth, periodevelger, orkestrering
+│       ├── app.js           # Entry point: auth, periodevelger, datatabeller, orkestrering
 │       ├── auth.js          # Supabase-klient, login/logout, session-håndtering
 │       ├── data.js          # Hent data fra Supabase, cache, beregninger
 │       └── charts.js        # Alle 7 ECharts-konfigurasjoner og rendering
@@ -191,6 +191,15 @@ jobs:
 - **Scatter**: Temperatur vs forbruk med lineær og kvadratisk regresjon + R²
 - **Heatmap**: Ukedag × klokketime
 - **Snitt per ukedag**: Bar chart man–søn
+
+### Datatabeller
+- Hver graf (unntatt gauge) har en "Vis datatabell"-knapp som toggler en HTML-tabell med grafens data
+- Tabellen er skjult som default, synlig for alle når den åpnes
+- `buildTable(chartId, headers, rows)` i `app.js` bygger tabellen og setter inn i `.chart-table`-containeren
+- Toggle via event delegation på `#charts-container` – oppdaterer `aria-expanded` og knappetekst
+- Tabellene populeres i `loadData()` etter graf-rendering med data fra samme kilde som grafen
+- Formatering: `DD.MM.YY HH:00` for timer, `DD.MM.YYYY` for dager, `.toFixed(2)` for kWh, `.toFixed(1)` for °C og %, `–` for null
+- CSS: sticky header, `tabular-nums`, scrollbar med `max-h-64`
 
 ### Dashboard-layout
 
