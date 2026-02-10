@@ -117,6 +117,8 @@ export async function fetchData(days, homeId = 'all') {
 export function fillMissingHours(data, days) {
   const now = new Date();
   now.setMinutes(0, 0, 0);
+  // Stopp ved siste hele time (forrige time), ikke pågående time
+  now.setHours(now.getHours() - 1);
   const start = new Date(now);
   start.setDate(start.getDate() - days);
 
