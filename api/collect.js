@@ -202,8 +202,7 @@ async function fetchTemperatures(consumptionNodes, station = 'SN17280') {
   try {
     const dates = consumptionNodes.map((n) => new Date(n.from));
     const minDate = new Date(Math.min(...dates));
-    // Utvid til nåtid slik at Frost leverer temperatur for timer Tibber ikke har ennå
-    const maxDate = new Date(Math.max(Math.max(...dates), Date.now()));
+    const maxDate = new Date(Math.max(...dates));
     maxDate.setHours(maxDate.getHours() + 1);
 
     const refTime = `${minDate.toISOString().slice(0, 16)}/${maxDate.toISOString().slice(0, 16)}`;
