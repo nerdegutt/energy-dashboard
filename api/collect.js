@@ -100,7 +100,6 @@ module.exports = async function handler(req, res) {
       message: 'OK',
       homes: homes.map((h) => h.id),
       upserted: totalUpserted,
-      tempPoints: tempMap.size,
     });
   } catch (err) {
     console.error('collect error:', err);
