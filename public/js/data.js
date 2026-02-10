@@ -69,7 +69,7 @@ async function fetchSingleHome(days, homeId) {
   while (true) {
     const { data, error } = await sb
       .from('consumption')
-      .select('timestamp, consumption_kwh, outside_temp_c, home_id')
+      .select('timestamp, consumption_kwh, outside_temp_c')
       .eq('home_id', homeId)
       .gte('timestamp', since.toISOString())
       .order('timestamp', { ascending: true })
