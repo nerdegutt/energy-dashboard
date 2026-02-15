@@ -243,7 +243,7 @@ jobs:
 - **Forbruksprognose** (7d + 21d): 7 dager tilbake med faktisk forbruk + 21 dager fremover med predikert forbruk. Dual-axis med temperatur. Usikkerhetsbånd for både forbruk og temperatur. Bruker timedata fra Locationforecast (kort horisont) og daglige snitt fra Subseasonal (lang horisont)
 - **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode, grønn fyll der siste år < forrige periode. Tooltip viser prosentvis differanse. Legend: "Siste år" (cyan) og "Forrige periode" (lilla).
 - **Månedlig endring**: Prosentvis endring per måned vs. tilsvarende måned året før. Grønn = mindre, rød = mer. Labels over stolpene viser %-verdi. Tooltip: "x% mer/mindre enn året før".
-- **Månedlig totalforbruk**: Gruppert stolpediagram som viser totalt forbruk per måned (jan–des), med én stolpe per tilgjengelig år. Farger: oransje, lilla, cyan, grønn (syklisk). Tooltip med `toLocaleString('nb-NO')` formatering.
+- **Månedlig totalforbruk**: Gruppert stolpediagram som viser totalt forbruk per måned (jan–des), med én stolpe per tilgjengelig år. Rød stiplet markLine på 5000 kWh (strømstøttegrense). Farger: oransje, lilla, cyan, grønn (syklisk). Tooltip med `toLocaleString('nb-NO')` formatering.
 
 **Kun årsvisning (365d):**
 - **Scatter**: Temperatur vs forbruk med lineær, kvadratisk og sesongregresjon. Viser vinter-kurve (jan, blå stiplet) og sommer-kurve (jul, grønn stiplet) fra sesongmodellen. R²-verdier for alle tre modeller + antall fjernede outliers

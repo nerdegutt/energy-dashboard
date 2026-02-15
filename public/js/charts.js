@@ -1035,16 +1035,27 @@ export function renderMonthlyTotalChart({ months, years, series }) {
 
   const YEAR_COLORS = ['#f97316', '#a78bfa', CYAN, '#34d399'];
 
-  const echartsSeries = years.map((year, i) => ({
-    name: String(year),
-    type: 'bar',
-    data: series[year],
-    itemStyle: {
-      color: YEAR_COLORS[i % YEAR_COLORS.length],
-      borderRadius: [3, 3, 0, 0],
-    },
-    barMaxWidth: 30,
-  }));
+  const echartsSeries = years.map((year, i) => {
+    const opts = {
+      name: String(year),
+      type: 'bar',
+      data: series[year],
+      itemStyle: {
+        color: YEAR_COLORS[i % YEAR_COLORS.length],
+        borderRadius: [3, 3, 0, 0],
+      },
+      barMaxWidth: 30,
+    };
+    if (i === 0) {
+      opts.markLine = {
+        silent: true,
+        symbol: 'none',
+        lineStyle: { color: '#ef4444', width: 1.5, type: 'dashed' },
+        data: [{ yAxis: 5000, label: { formatter: '5 000 kWh', color: '#ef4444', fontFamily: FONT, fontSize: 10, position: 'insideEndTop' } }],
+      };
+    }
+    return opts;
+  });
 
   chart.setOption({
     title: { text: 'Månedlig totalforbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },

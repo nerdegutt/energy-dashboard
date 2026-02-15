@@ -208,7 +208,7 @@ async function loadData(days) {
 
     const filled = days < 365 ? fillMissingHours(data, days) : data;
     const chartData = days >= 365 ? dailyAverage(data) : filled;
-    const rolling = rollingAverage(chartData, days >= 365 ? 7 : 24);
+    const rolling = days <= 1 ? [] : rollingAverage(chartData, days >= 365 ? 7 : 24);
     const weekday = avgByWeekday(data);
     const heatmap = heatmapData(data);
 
