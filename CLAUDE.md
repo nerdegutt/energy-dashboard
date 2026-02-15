@@ -238,7 +238,7 @@ jobs:
 
 **Alle perioder:**
 - **Gauge**: Snitt for valgt periode (dynamisk label). I 24t-visning vises avvik fra forventet (sesongmodell)
-- **Linjegraf** (dual-axis): Forbruk + rullende snitt (skjult i 24t-modus) + temperatur, med dataZoom
+- **Linjegraf** (dual-axis): Forbruk + rullende snitt (skjult i 24t-modus) + temperatur
 - **Kumulativ strømstøtte** (kun individuelle hjem): Kumulativt forbruk denne måneden med projisert total mot 5000 kWh-grensen. Viser faktisk (hel linje), projisert (stiplet), usikkerhetsbånd (p10/p90), og daglig forbruk som søyler. Bruker temperaturprognose fra met.no + sesongmodell for prediksjon
 - **Forbruksprognose** (7d + 21d): 7 dager tilbake med faktisk forbruk + 21 dager fremover med predikert forbruk. Dual-axis med temperatur. Usikkerhetsbånd for både forbruk og temperatur. Bruker timedata fra Locationforecast (kort horisont) og daglige snitt fra Subseasonal (lang horisont)
 - **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode, grønn fyll der siste år < forrige periode. Tooltip viser prosentvis differanse. Legend: "Siste år" (cyan) og "Forrige periode" (lilla).
@@ -268,7 +268,6 @@ jobs:
 │  GAUGE   │  Linjegraf (dual-axis)                        │
 │  snitt   │  - Forbruk (cyan) + rullende snitt (lilla)    │
 │  periode │  - Temperatur (oransje, høyre y-akse)         │
-│          │  [════════ dataZoom ══════════]                │
 ├──────────┴───────────────────────────────────────────────┤
 │  Kumulativt forbruk (strømstøtte) [kun individuelle hjem]│
 ├──────────────────────────────────────────────────────────┤

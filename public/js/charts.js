@@ -155,7 +155,7 @@ export function renderLineChart(data, rollingAvg, days) {
       textStyle: baseTextStyle(),
       top: 20,
     },
-    grid: { left: 50, right: 50, top: 55, bottom: 70 },
+    grid: { left: 50, right: 50, top: 55, bottom: 30 },
     xAxis: {
       type: 'category',
       data: timestamps,
@@ -202,16 +202,6 @@ export function renderLineChart(data, rollingAvg, days) {
         splitLine: { show: false },
       },
     ],
-    dataZoom: [{
-      type: 'slider',
-      height: 20,
-      bottom: 10,
-      borderColor: '#333',
-      backgroundColor: '#1a1a2e',
-      fillerColor: 'rgba(34, 211, 238, 0.1)',
-      handleStyle: { color: CYAN },
-      textStyle: baseTextStyle(),
-    }],
     series: [
       {
         name: 'Forbruk',
@@ -485,7 +475,7 @@ export function renderYoyChart(yoyData) {
       textStyle: baseTextStyle(),
       top: 20,
     },
-    grid: { left: 50, right: 20, top: 55, bottom: 70 },
+    grid: { left: 50, right: 20, top: 55, bottom: 30 },
     xAxis: {
       type: 'category',
       data: yoyData.labels,
@@ -510,16 +500,6 @@ export function renderYoyChart(yoyData) {
       axisLabel: baseTextStyle(),
       splitLine: baseSplitLine(),
     },
-    dataZoom: [{
-      type: 'slider',
-      height: 20,
-      bottom: 10,
-      borderColor: '#333',
-      backgroundColor: '#1a1a2e',
-      fillerColor: 'rgba(34, 211, 238, 0.1)',
-      handleStyle: { color: CYAN },
-      textStyle: baseTextStyle(),
-    }],
     series: [
       {
         name: 'Siste år',
