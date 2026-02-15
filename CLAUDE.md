@@ -246,7 +246,7 @@ jobs:
 - **Månedlig totalforbruk**: Gruppert stolpediagram som viser totalt forbruk per måned (jan–des), med én stolpe per tilgjengelig år. Henter data separat fra 1. januar `currentYear-2` (maks 2 hele foregående år + inneværende). Første ufullstendige måned skippes automatisk. Inneværende måned viser faktisk forbruk + projisert rest (transparent forlengelse) basert på `monthlyProjection`. Rød stiplet markLine på 5000 kWh (strømstøttegrense, kun individuelle hjem). Farger: oransje, lilla, cyan, grønn (syklisk). Tooltip viser faktisk + projisert total i parentes.
 
 **Kun årsvisning (365d):**
-- **Scatter**: Temperatur vs forbruk med lineær, kvadratisk og sesongregresjon. Viser vinter-kurve (jan, blå stiplet) og sommer-kurve (jul, grønn stiplet) fra sesongmodellen. R²-verdier for alle tre modeller + antall fjernede outliers
+- **Scatter**: Temperatur vs forbruk med lineær, kvadratisk og sesongregresjon. Viser vinter-kurve (jan, blå stiplet) og sommer-kurve (jul, grønn stiplet) fra sesongmodellen. R²-verdier for alle tre modeller + antall fjernede outliers. Akser: `onZero: false` for å tvinge aksene til grid-kanten (unngår at y-aksen tegnes ved 0°C), x-akse-label sentrert under grafen
 - **Heatmap**: Ukedag × klokketime
 - **Snitt per ukedag**: Bar chart man–søn
 
