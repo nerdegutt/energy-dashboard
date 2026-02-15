@@ -171,8 +171,8 @@ FROST_CLIENT_ID=            # Fra frost.met.no
 - Begge bruker `User-Agent`-header (påkrevd av met.no)
 
 ### Respons
-- `{ hourly: [...], daily: [...] }` – daily filtreres slik at datoer som dekkes av hourly ekskluderes
-- HTTP-cache: `Cache-Control: public, max-age=3600, s-maxage=3600`
+- `{ hourly: [...], daily: [...] }` – daily filtreres: kun datoer med ≥20 timeoppføringer i hourly ekskluderes (typisk de første 2–3 dagene med full timedekning). Datoer med sparse 6-timersdata (4 oppføringer/dag) beholdes i daily
+- HTTP-cache: `Cache-Control: public, s-maxage=3600, max-age=0` – CDN cacher i 1t, nettleseren revaliderer alltid (unngår stale data ved kodeendringer)
 - Vercel maxDuration: 10s
 
 ## GitHub Actions Workflow
@@ -221,7 +221,7 @@ jobs:
 
 ### URL-state
 - Valgt hjem og periode persisteres i URL query params (`?home=<id>&days=<n>`)
-- Default (Alle, 24t) gir ren URL uten params
+- Default (første hjem, 24t) gir ren URL uten params. "Alle" og andre hjem gir `?home=all` / `?home=<id>`
 - `history.replaceState` brukes for å unngå å forurense nettleserhistorikken
 
 ### Periodevelger og aggregering
@@ -312,10 +312,10 @@ jobs:
 - **`robustSeasonalRegression(points, madThreshold=3)`**: Wrapper rundt `seasonalRegression` med MAD-basert outlier-fjerning. Kjører regresjon → beregner residualer → MAD × 1.4826 → fjerner punkter > 3×MAD → kjører regresjon på nytt. Fjerner typisk 2–4% av punktene (elbil-lading). Returnerer `{a, b, c, d, e, removedCount}`
 - **`makePredictFn(coeffs)`**: Factory som returnerer `(temp, doy) => kWh`. Én kilde til sannhet for prediksjonsformelen. Håndterer både 3-koeff (legacy) og 5-koeff (sesong) format. Brukes av `consumptionDeviation`, `monthlyProjection` og `forecastTimeline`
 - **`consumptionDeviation(data, coeffs)`**: Beregner avvik mellom faktisk og forventet forbruk siste 24t. Bruker sesongmodell med doy for sesongkorrigert forventning
-- **`fetchForecast(lat, lon)`**: Henter temperaturprognose fra `/api/forecast`, cacher i localStorage (1t TTL)
+- **`fetchForecast(lat, lon)`**: Henter temperaturprognose fra `/api/forecast` med `cache: 'no-cache'` (bypass nettleserens HTTP-cache), cacher i localStorage (1t TTL)
 - **`historicalDailyTemps(data)`**: Bygger lookup `MM-DD → snitttemperatur` fra historisk data. Brukes som fallback når prognose mangler
-- **`monthlyProjection(monthData, forecast, histTemps, coeffs)`**: Beregner kumulativt forbruk for inneværende måned. Kombinerer faktisk forbruk (fortid), sesongmodell + temperaturprognose (fremtid), med usikkerhetsbånd (p10/p90). Fallback-kjede: timeprognose → dagsprognose → historisk snitt
-- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Samme fallback-kjede som monthlyProjection
+- **`monthlyProjection(monthData, forecast, histTemps, coeffs)`**: Beregner kumulativt forbruk for inneværende måned. Kombinerer faktisk forbruk (fortid), sesongmodell + temperaturprognose (fremtid), med usikkerhetsbånd (p10/p90). Fallback-kjede: timeprognose (≥20 datapunkter/dag) → dagsprognose (Subseasonal) → historisk snitt
+- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Bruker timedata kun for dager med ≥20 datapunkter (full timedekning); 6-timersdata (4 punkter/dag) faller til Subseasonal dagsprognose for å unngå temperaturspiker ved overgang mellom datakilder
 
 ## Backfill (initial datainnhenting)
 
