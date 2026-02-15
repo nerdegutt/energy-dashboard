@@ -298,6 +298,8 @@ jobs:
 - Primærfarge (forbruk): `#22d3ee` (cyan)
 - Snitt-linje: `#a78bfa` (lilla)
 - Temperatur: `#f97316` (oransje)
+- **Chart-hjelpefunksjoner** i `charts.js`: `baseTextStyle()`, `baseAxisLine()`, `baseSplitLine()`, `baseTooltip(overrides)` – felles config som gjenbrukes av alle grafer. `baseTooltip` returnerer `confine`, `backgroundColor`, `borderColor` og `textStyle`, og tar imot overrides (typisk `trigger` og `formatter`)
+- **`hideOverlap: true`** på `axisLabel` i linje- og YoY-graf – ECharts skjuler automatisk overlappende labels på smale skjermer
 
 ### Client-side beregninger (data.js)
 
