@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Viktig: Aldri push uten brukerens godkjenning
+
+**ALDRI kjør `git push` uten at brukeren eksplisitt har testet og bekreftet at endringene fungerer.** Commit lokalt, men vent alltid på brukerens godkjenning før push.
+
 ## Viktig: Hold README.md oppdatert
 
 Når funksjonalitet legges til eller endres, **må README.md oppdateres i samme commit**. README er den primære oppsettguiden for prosjektet og inneholder database-skjema, oppsettsinstruksjoner og funksjonsbeskrivelser som må speile faktisk kode.
