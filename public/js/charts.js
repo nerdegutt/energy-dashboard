@@ -141,6 +141,7 @@ export function renderLineChart(data, rollingAvg, days) {
     aria: { enabled: true, label: { description: 'Linjegraf som viser strømforbruk, rullende snitt og temperatur over tid' } },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
@@ -409,6 +410,7 @@ export function renderScatterChart(data, seasonalCoeffs) {
     aria: { enabled: true, label: { description: `Punktdiagram med ${points.length} datapunkter. Lineær R²=${r2Lin.toFixed(3)}, kvadratisk R²=${r2Quad.toFixed(3)}${r2Seasonal != null ? `, sesong R²=${r2Seasonal.toFixed(3)}` : ''}` } },
     tooltip: {
       trigger: 'item',
+      confine: true,
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
@@ -463,6 +465,7 @@ export function renderYoyChart(yoyData) {
     aria: { enabled: true, label: { description: 'Sammenligning av strømforbruk siste år mot forrige periode med 28-dagers rullende snitt' } },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
@@ -639,6 +642,7 @@ export function renderMonthlyChangeChart(monthlyChange) {
     aria: { enabled: true, label: { description: 'Stolpediagram som viser prosentvis endring i strømforbruk per måned sammenlignet med året før' } },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
@@ -733,6 +737,7 @@ export function renderCumulativeChart(projectionData) {
     aria: { enabled: true, label: { description: `Kumulativ graf over strømforbruk denne måneden. Projisert total: ${Math.round(projectionData.projectedTotal)} kWh. Grense: ${limit} kWh.` } },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
@@ -882,6 +887,7 @@ export function renderForecastChart(timelineData) {
     aria: { enabled: true, label: { description: 'Forbruksprognose: 7 dager tilbake med faktisk forbruk og 21 dager fremover med predikert forbruk basert på temperaturprognose' } },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
@@ -1099,6 +1105,7 @@ export function renderMonthlyTotalChart({ months, years, series }, projectedTota
     aria: { enabled: true, label: { description: 'Gruppert stolpediagram som viser totalt strømforbruk per måned, gruppert etter år' } },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
@@ -1207,6 +1214,7 @@ export function renderWeekdayChart(weekdayData) {
     aria: { enabled: true, label: { description: 'Stolpediagram som viser gjennomsnittlig strømforbruk per ukedag, mandag til søndag' } },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: '#1a1a2e',
       borderColor: '#333',
       textStyle: baseTextStyle(),
