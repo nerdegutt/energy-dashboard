@@ -1,11 +1,12 @@
 import { sb, getSession, signIn, signOut } from './auth.js';
-import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, robustSeasonalRegression, dayOfYear, consumptionDeviation, fetchForecast, historicalDailyTemps, monthlyProjection, forecastTimeline } from './data.js';
+import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, monthlyTotals, robustSeasonalRegression, dayOfYear, consumptionDeviation, fetchForecast, historicalDailyTemps, monthlyProjection, forecastTimeline } from './data.js';
 import {
   renderGauge,
   renderLineChart,
   renderScatterChart,
   renderYoyChart,
   renderMonthlyChangeChart,
+  renderMonthlyTotalChart,
   renderHeatmap,
   renderWeekdayChart,
   renderCumulativeChart,
@@ -280,6 +281,17 @@ async function loadData(days) {
     buildTable('monthly-change-chart',
       ['M\u00e5ned', 'Endring (%)'],
       yoy.monthlyChange.map((d) => [d.month, fmtPct(d.pct)])
+    );
+
+    // Månedlig totalforbruk per år
+    const mt = monthlyTotals(yoyData);
+    renderMonthlyTotalChart(mt);
+    buildTable('monthly-total-chart',
+      ['M\u00e5ned', ...mt.years.map(String)],
+      mt.months.map((m, i) => [
+        m,
+        ...mt.years.map(y => mt.series[y][i] != null ? mt.series[y][i].toLocaleString('nb-NO') : '\u2013'),
+      ])
     );
 
     // --- Prognose: kumulativ + forecast ---

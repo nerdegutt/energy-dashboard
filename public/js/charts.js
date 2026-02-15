@@ -1030,6 +1030,63 @@ export function renderForecastChart(timelineData) {
 }
 
 // --- Heatmap: Ukedag x klokketime ---
+export function renderMonthlyTotalChart({ months, years, series }) {
+  const chart = getOrCreate('monthly-total-chart');
+
+  const YEAR_COLORS = ['#f97316', '#a78bfa', CYAN, '#34d399'];
+
+  const echartsSeries = years.map((year, i) => ({
+    name: String(year),
+    type: 'bar',
+    data: series[year],
+    itemStyle: {
+      color: YEAR_COLORS[i % YEAR_COLORS.length],
+      borderRadius: [3, 3, 0, 0],
+    },
+    barMaxWidth: 30,
+  }));
+
+  chart.setOption({
+    title: { text: 'Månedlig totalforbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
+    aria: { enabled: true, label: { description: 'Gruppert stolpediagram som viser totalt strømforbruk per måned, gruppert etter år' } },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1a1a2e',
+      borderColor: '#333',
+      textStyle: baseTextStyle(),
+      formatter: (params) => {
+        const lines = params
+          .filter(p => p.value != null)
+          .map(p => `${p.marker} ${p.seriesName}: ${Number(p.value).toLocaleString('nb-NO')} kWh`);
+        return `${params[0].name}<br/>${lines.join('<br/>')}`;
+      },
+    },
+    legend: {
+      data: years.map(String),
+      textStyle: baseTextStyle(),
+      top: 20,
+    },
+    grid: { left: 60, right: 20, top: 50, bottom: 30 },
+    xAxis: {
+      type: 'category',
+      data: months,
+      axisLine: baseAxisLine(),
+      axisLabel: baseTextStyle(),
+    },
+    yAxis: {
+      type: 'value',
+      name: 'kWh',
+      nameTextStyle: baseTextStyle(),
+      axisLine: baseAxisLine(),
+      axisLabel: baseTextStyle(),
+      splitLine: baseSplitLine(),
+    },
+    series: echartsSeries,
+  });
+
+  return chart;
+}
+
 export function renderHeatmap(heatmapData) {
   const chart = getOrCreate('heatmap-chart');
 

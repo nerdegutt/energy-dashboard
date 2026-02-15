@@ -174,7 +174,17 @@
         <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
       </section>
 
-      <!-- Rad 5: Heatmap -->
+      <!-- Rad 5: Månedlig totalforbruk per år -->
+      <section class="panel rounded-lg p-4" aria-labelledby="monthly-total-title">
+        <h2 id="monthly-total-title" class="sr-only">Månedlig totalforbruk per år</h2>
+        <div id="monthly-total-chart" role="img" tabindex="0" aria-label="Gruppert stolpediagram som viser totalt strømforbruk per måned, gruppert etter år" style="height: 320px;"></div>
+        <div class="flex justify-end mt-2">
+          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
+        </div>
+        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      </section>
+
+      <!-- Rad 6: Heatmap -->
       <section class="panel rounded-lg p-4" aria-labelledby="heatmap-title">
         <h2 id="heatmap-title" class="sr-only">Forbruk: ukedag × klokketime</h2>
         <div id="heatmap-chart" role="img" tabindex="0" aria-label="Varmekart som viser gjennomsnittlig forbruk fordelt på ukedag og klokketime" style="height: 300px;"></div>

@@ -929,6 +929,29 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
   };
 }
 
+export function monthlyTotals(data) {
+  const buckets = new Map();
+  for (const d of data) {
+    if (d.consumption_kwh == null) continue;
+    const dt = new Date(d.timestamp);
+    const key = `${dt.getFullYear()}-${dt.getMonth()}`;
+    buckets.set(key, (buckets.get(key) || 0) + d.consumption_kwh);
+  }
+
+  const years = [...new Set([...buckets.keys()].map(k => parseInt(k.split('-')[0])))].sort();
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des'];
+  const series = {};
+  for (const year of years) {
+    series[year] = [];
+    for (let m = 0; m < 12; m++) {
+      const val = buckets.get(`${year}-${m}`);
+      series[year].push(val != null ? Math.round(val) : null);
+    }
+  }
+
+  return { months, years, series };
+}
+
 export function heatmapData(data) {
   // [ukedag (0=man), klokketime, snittverdi]
   const buckets = {};
