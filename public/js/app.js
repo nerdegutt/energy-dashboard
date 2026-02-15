@@ -33,14 +33,15 @@ function readUrlState() {
   const home = params.get('home');
   return {
     days: VALID_DAYS.includes(days) ? days : 1,
-    home: home || 'all',
+    home: home || null,
   };
 }
 
 function updateUrl() {
   const params = new URLSearchParams();
   if (currentDays !== 1) params.set('days', currentDays);
-  if (currentHomeId !== 'all') params.set('home', currentHomeId);
+  const defaultHomeId = homesData.length > 0 ? homesData[0].id : null;
+  if (currentHomeId && currentHomeId !== defaultHomeId) params.set('home', currentHomeId);
   const qs = params.toString();
   history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
 }
@@ -137,6 +138,7 @@ async function loadHomes() {
   selector.innerHTML = '';
   selector.add(new Option('Alle', 'all'));
   for (const home of homesData) selector.add(new Option(home.name, home.id));
+  if (!currentHomeId && homesData.length > 0) currentHomeId = homesData[0].id;
   selector.value = currentHomeId;
 }
 

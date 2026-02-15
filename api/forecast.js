@@ -72,11 +72,18 @@ module.exports = async function handler(req, res) {
     // --- Bygg samlet respons ---
     // hourly: brukes direkte for time-for-time prediksjon
     // daily: fallback for datoer som ikke dekkes av hourly
-    // Datoer som finnes i hourly markeres, slik at frontend kan velge riktig kilde
-    const hourlyDates = new Set(hourly.map(h => h.time.slice(0, 10)));
-    const dailyFiltered = daily.filter(d => !hourlyDates.has(d.date));
+    // Kun ekskluder datoer med tilstrekkelig timedekning (≥20 av 24 timer)
+    const hourlyCountByDate = new Map();
+    for (const h of hourly) {
+      const date = h.time.slice(0, 10);
+      hourlyCountByDate.set(date, (hourlyCountByDate.get(date) || 0) + 1);
+    }
+    const wellCoveredDates = new Set(
+      [...hourlyCountByDate.entries()].filter(([, count]) => count >= 20).map(([date]) => date)
+    );
+    const dailyFiltered = daily.filter(d => !wellCoveredDates.has(d.date));
 
-    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, max-age=0');
     return res.status(200).json({ hourly, daily: dailyFiltered });
   } catch (err) {
     console.error('forecast error:', err);

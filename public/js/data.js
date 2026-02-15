@@ -524,7 +524,7 @@ export async function fetchForecast(lat, lon) {
       }
     } catch {}
 
-    const resp = await fetch(`/api/forecast?lat=${lat}&lon=${lon}`);
+    const resp = await fetch(`/api/forecast?lat=${lat}&lon=${lon}`, { cache: 'no-cache' });
     if (!resp.ok) return null;
     const json = await resp.json();
     // { hourly: [{ time, temp, temp_p10, temp_p90 }], daily: [{ date, temp_mean, temp_p10, temp_p90 }] }
@@ -664,7 +664,7 @@ export function monthlyProjection(monthData, forecast, historicalTemps, coeffs) 
 
       const doyFuture = dayOfYear(new Date(dateStr));
       let dayPredicted;
-      if (dayHourly.length >= 4) {
+      if (dayHourly.length >= 20) {
         let dayMean = 0, dayHigh = 0, dayLow = 0;
         for (const hf of dayHourly) {
           const t = hf.temp ?? 5;
@@ -808,7 +808,7 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     }
 
     const doy = dayOfYear(d);
-    if (dayHourly.length >= 4) {
+    if (dayHourly.length >= 20) {
       // Har timedata: prediker per datapunkt, skaler til dagstotal
       let dayKwh = 0, dayHigh = 0, dayLow = 0;
       let tempSum = 0, tp10Sum = 0, tp90Sum = 0;
