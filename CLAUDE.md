@@ -243,7 +243,7 @@ jobs:
 - **Forbruksprognose** (7d + 21d): 7 dager tilbake med faktisk forbruk + 21 dager fremover med predikert forbruk. Dual-axis med temperatur. Usikkerhetsbånd for både forbruk og temperatur. Bruker timedata fra Locationforecast (kort horisont) og daglige snitt fra Subseasonal (lang horisont)
 - **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode, grønn fyll der siste år < forrige periode. Tooltip viser prosentvis differanse. Legend: "Siste år" (cyan) og "Forrige periode" (lilla).
 - **Månedlig endring**: Prosentvis endring per måned vs. tilsvarende måned året før. Grønn = mindre, rød = mer. Labels over stolpene viser %-verdi. Tooltip: "x% mer/mindre enn året før".
-- **Månedlig totalforbruk**: Gruppert stolpediagram som viser totalt forbruk per måned (jan–des), med én stolpe per tilgjengelig år. Inneværende måned viser faktisk forbruk + projisert rest (transparent forlengelse) basert på `monthlyProjection`. Rød stiplet markLine på 5000 kWh (strømstøttegrense, kun individuelle hjem). Farger: oransje, lilla, cyan, grønn (syklisk). Tooltip viser faktisk + projisert total i parentes.
+- **Månedlig totalforbruk**: Gruppert stolpediagram som viser totalt forbruk per måned (jan–des), med én stolpe per tilgjengelig år. Henter data separat fra 1. januar `currentYear-2` (maks 2 hele foregående år + inneværende). Første ufullstendige måned skippes automatisk. Inneværende måned viser faktisk forbruk + projisert rest (transparent forlengelse) basert på `monthlyProjection`. Rød stiplet markLine på 5000 kWh (strømstøttegrense, kun individuelle hjem). Farger: oransje, lilla, cyan, grønn (syklisk). Tooltip viser faktisk + projisert total i parentes.
 
 **Kun årsvisning (365d):**
 - **Scatter**: Temperatur vs forbruk med lineær, kvadratisk og sesongregresjon. Viser vinter-kurve (jan, blå stiplet) og sommer-kurve (jul, grønn stiplet) fra sesongmodellen. R²-verdier for alle tre modeller + antall fjernede outliers
@@ -309,7 +309,7 @@ jobs:
 - **`dailyAverage`**: Aggregering per dato for årsvisning, filtrerer null
 - **`yearOverYear`**: Sammenligner siste år med 1 år tilbake (dato-for-dato via `setFullYear`), 14d sentrert rullende snitt (±7 dager), månedlig prosentvis endring. Skuddår: 29. feb matcher 1. mars i ikke-skuddår (JavaScript `setFullYear`-adferd), jevnes ut av rullende snitt
 - **`avgByWeekday`**: Grupper på `getDay()`, rekkefølge man–søn, filtrerer null
-- **`monthlyTotals`**: Grupperer forbruk per måned og år. Returnerer `{ months, years, series }` for gruppert stolpediagram
+- **`monthlyTotals`**: Grupperer forbruk per måned og år. Skipper første måned hvis data ikke starter på den 1. (ufullstendig). Returnerer `{ months, years, series }` for gruppert stolpediagram
 - **`heatmapData`**: Kryss av ukedag (man=0) × klokketime med snittverdi, filtrerer null
 
 ### Regresjonsmodell og prognose (data.js)

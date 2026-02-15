@@ -930,11 +930,20 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
 }
 
 export function monthlyTotals(data) {
+  if (data.length === 0) return { months: [], years: [], series: {} };
+
+  // Skip første måned hvis data ikke starter på den 1. (ufullstendig)
+  const firstDt = new Date(data[0].timestamp);
+  const skipKey = firstDt.getDate() > 1
+    ? `${firstDt.getFullYear()}-${firstDt.getMonth()}`
+    : null;
+
   const buckets = new Map();
   for (const d of data) {
     if (d.consumption_kwh == null) continue;
     const dt = new Date(d.timestamp);
     const key = `${dt.getFullYear()}-${dt.getMonth()}`;
+    if (key === skipKey) continue;
     buckets.set(key, (buckets.get(key) || 0) + d.consumption_kwh);
   }
 

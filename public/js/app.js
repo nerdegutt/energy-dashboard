@@ -352,8 +352,11 @@ async function loadData(days) {
       forecastPanel.classList.add('hidden');
     }
 
-    // Månedlig totalforbruk per år (etter prognose, slik at projisert total er tilgjengelig)
-    const mt = monthlyTotals(yoyData);
+    // Månedlig totalforbruk: maks 2 hele foregående år + inneværende
+    const mtStart = new Date(new Date().getFullYear() - 2, 0, 1);
+    const mtDays = Math.ceil((Date.now() - mtStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const mtData = await fetchData(mtDays, currentHomeId);
+    const mt = monthlyTotals(mtData);
     renderMonthlyTotalChart(mt, projectedMonthTotal, currentHomeId !== 'all');
     buildTable('monthly-total-chart',
       ['M\u00e5ned', ...mt.years.map(String)],

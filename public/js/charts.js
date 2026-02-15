@@ -811,7 +811,7 @@ export function renderCumulativeChart(projectionData) {
           silent: true,
           symbol: 'none',
           lineStyle: { color: '#ef4444', width: 1.5, type: 'dashed' },
-          data: [{ yAxis: limit, label: { formatter: `${limit} kWh`, color: '#ef4444', fontFamily: FONT, fontSize: 10 } }],
+          data: [{ yAxis: limit, label: { formatter: `${limit} kWh`, color: '#ef4444', fontFamily: FONT, fontSize: 10, position: 'insideEndTop' } }],
         },
         z: 2,
       },

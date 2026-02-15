@@ -15,7 +15,7 @@ Støtter flere hjem (Tibber homes) med individuell temperaturstasjon og koordina
 - **Forbruksprognose**: 7 dager tilbake + 21 dager fremover med usikkerhetsbånd, basert på met.no-prognose
 - **År-over-år sammenligning** med sentrert rullende snitt (±7 dager) og rød/grønn fyll som viser om forbruket har gått opp eller ned
 - **Månedlig endring** i prosent sammenlignet med tilsvarende måned året før
-- **Månedlig totalforbruk** per år som gruppert stolpediagram (jan–des, én stolpe per år) med projisert rest for inneværende måned
+- **Månedlig totalforbruk** per år som gruppert stolpediagram (jan–des, maks 2 foregående år + inneværende) med projisert rest for inneværende måned
 
 **Kun årsvisning (365d):**
 - **Scatter plot** med temperatur vs. forbruk, lineær/kvadratisk/sesongregresjon, vinter- og sommerkurver
