@@ -283,20 +283,10 @@ async function loadData(days) {
       yoy.monthlyChange.map((d) => [d.month, fmtPct(d.pct)])
     );
 
-    // Månedlig totalforbruk per år
-    const mt = monthlyTotals(yoyData);
-    renderMonthlyTotalChart(mt);
-    buildTable('monthly-total-chart',
-      ['M\u00e5ned', ...mt.years.map(String)],
-      mt.months.map((m, i) => [
-        m,
-        ...mt.years.map(y => mt.series[y][i] != null ? mt.series[y][i].toLocaleString('nb-NO') : '\u2013'),
-      ])
-    );
-
     // --- Prognose: kumulativ + forecast ---
     const cumulativePanel = document.getElementById('cumulative-panel');
     const forecastPanel = document.getElementById('forecast-panel');
+    let projectedMonthTotal = null;
 
     try {
       // Finn lat/lon for gjeldende hjem (ved "Alle": bruk første hjem)
@@ -311,12 +301,16 @@ async function loadData(days) {
         const forecastData = await fetchForecast(lat, lon);
         const histTemps = historicalDailyTemps(yoyData);
 
+        // Månedsprojeksjon (brukes av kumulativ graf + månedlig totalforbruk)
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthData = yoyData.filter(d => new Date(d.timestamp) >= monthStart);
+        const projResult = monthlyProjection(monthData, forecastData, histTemps, coeffs);
+        const lastProj = projResult.projected.filter(v => v != null);
+        if (lastProj.length > 0) projectedMonthTotal = lastProj[lastProj.length - 1];
+
         // Kumulativ strømstøtte-graf (kun individuelle hjem)
         if (currentHomeId !== 'all') {
-          const now = new Date();
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          const monthData = yoyData.filter(d => new Date(d.timestamp) >= monthStart);
-          const projResult = monthlyProjection(monthData, forecastData, histTemps, coeffs);
           cumulativePanel.classList.remove('hidden');
           renderCumulativeChart(projResult);
           buildTable('cumulative-chart',
@@ -357,6 +351,17 @@ async function loadData(days) {
       cumulativePanel.classList.add('hidden');
       forecastPanel.classList.add('hidden');
     }
+
+    // Månedlig totalforbruk per år (etter prognose, slik at projisert total er tilgjengelig)
+    const mt = monthlyTotals(yoyData);
+    renderMonthlyTotalChart(mt, projectedMonthTotal, currentHomeId !== 'all');
+    buildTable('monthly-total-chart',
+      ['M\u00e5ned', ...mt.years.map(String)],
+      mt.months.map((m, i) => [
+        m,
+        ...mt.years.map(y => mt.series[y][i] != null ? mt.series[y][i].toLocaleString('nb-NO') : '\u2013'),
+      ])
+    );
 
     const heatmapPanel = document.getElementById('heatmap-chart').closest('.panel');
     const weekdayPanel = document.getElementById('weekday-chart').closest('.panel');

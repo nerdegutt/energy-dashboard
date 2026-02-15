@@ -1030,23 +1030,36 @@ export function renderForecastChart(timelineData) {
 }
 
 // --- Heatmap: Ukedag x klokketime ---
-export function renderMonthlyTotalChart({ months, years, series }) {
+export function renderMonthlyTotalChart({ months, years, series }, projectedTotal, showLimit) {
   const chart = getOrCreate('monthly-total-chart');
 
   const YEAR_COLORS = ['#f97316', '#a78bfa', CYAN, '#34d399'];
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const currentYearIdx = years.indexOf(currentYear);
+  const hasProjection = projectedTotal != null && currentYearIdx >= 0;
+  const actual = hasProjection ? (series[currentYear][currentMonth] || 0) : 0;
+  const remainder = hasProjection ? Math.max(0, Math.round(projectedTotal) - actual) : 0;
 
   const echartsSeries = years.map((year, i) => {
     const opts = {
       name: String(year),
       type: 'bar',
-      data: series[year],
+      data: series[year].map((v, mi) => {
+        if (hasProjection && i === currentYearIdx && mi === currentMonth && remainder > 0) {
+          return { value: v, itemStyle: { borderRadius: 0 } };
+        }
+        return v;
+      }),
       itemStyle: {
         color: YEAR_COLORS[i % YEAR_COLORS.length],
         borderRadius: [3, 3, 0, 0],
       },
       barMaxWidth: 30,
     };
-    if (i === 0) {
+    if (i === 0 && showLimit) {
       opts.markLine = {
         silent: true,
         symbol: 'none',
@@ -1054,8 +1067,29 @@ export function renderMonthlyTotalChart({ months, years, series }) {
         data: [{ yAxis: 5000, label: { formatter: '5 000 kWh', color: '#ef4444', fontFamily: FONT, fontSize: 10, position: 'insideEndTop' } }],
       };
     }
+    if (hasProjection && i === currentYearIdx) opts.stack = 'current';
     return opts;
   });
+
+  if (hasProjection && remainder > 0) {
+    const projData = new Array(12).fill(null);
+    projData[currentMonth] = remainder;
+    echartsSeries.push({
+      name: 'Projisert',
+      type: 'bar',
+      stack: 'current',
+      data: projData,
+      itemStyle: {
+        color: YEAR_COLORS[currentYearIdx % YEAR_COLORS.length],
+        opacity: 0.4,
+        borderRadius: [3, 3, 0, 0],
+      },
+      barMaxWidth: 30,
+    });
+  }
+
+  const legendData = years.map(String);
+  if (hasProjection && remainder > 0) legendData.push('Projisert');
 
   chart.setOption({
     title: { text: 'Månedlig totalforbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
@@ -1066,14 +1100,21 @@ export function renderMonthlyTotalChart({ months, years, series }) {
       borderColor: '#333',
       textStyle: baseTextStyle(),
       formatter: (params) => {
+        const proj = params.find(p => p.seriesName === 'Projisert');
         const lines = params
-          .filter(p => p.value != null)
-          .map(p => `${p.marker} ${p.seriesName}: ${Number(p.value).toLocaleString('nb-NO')} kWh`);
+          .filter(p => p.value != null && p.seriesName !== 'Projisert')
+          .map(p => {
+            let text = `${p.marker} ${p.seriesName}: ${Number(p.value).toLocaleString('nb-NO')} kWh`;
+            if (proj && proj.value != null && p.seriesName === String(currentYear)) {
+              text += ` (proj. ${Number(p.value + proj.value).toLocaleString('nb-NO')})`;
+            }
+            return text;
+          });
         return `${params[0].name}<br/>${lines.join('<br/>')}`;
       },
     },
     legend: {
-      data: years.map(String),
+      data: legendData,
       textStyle: baseTextStyle(),
       top: 20,
     },
