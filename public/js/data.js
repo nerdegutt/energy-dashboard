@@ -745,6 +745,32 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     if (d.outside_temp_c != null) bucket.temp.push(d.outside_temp_c);
   }
 
+  // --- Bias correction ---
+  // Compare actual vs model-predicted for recent complete days
+  let biasRatio = 1;
+  {
+    const actuals = [];
+    const preds = [];
+    for (let i = pastDays; i >= 1; i--) {
+      const bd = new Date(now);
+      bd.setDate(bd.getDate() - i);
+      const bDateStr = bd.toISOString().slice(0, 10);
+      const bb = dailyBuckets.get(bDateStr);
+      if (!bb || bb.kwh.length < 20) continue;
+      const actual = bb.kwh.reduce((s, v) => s + v, 0);
+      const avgT = bb.temp.length > 0
+        ? bb.temp.reduce((s, v) => s + v, 0) / bb.temp.length : null;
+      if (avgT == null) continue;
+      actuals.push(actual);
+      preds.push(predict(avgT, dayOfYear(bd)) * 24);
+    }
+    if (actuals.length >= 3) {
+      const sA = actuals.reduce((s, v) => s + v, 0);
+      const sP = preds.reduce((s, v) => s + v, 0);
+      if (sP > 0) biasRatio = sA / sP;
+    }
+  }
+
   const dates = [];
   const actualConsumption = [];
   const predictedConsumption = [];
@@ -774,9 +800,18 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     actualTemp.push(avgTemp);
 
     if (i === 0) {
-      predictedConsumption.push(totalKwh);
-      predictedHigh.push(totalKwh);
-      predictedLow.push(totalKwh);
+      // Extrapolate remaining hours if today is incomplete
+      const hoursWithData = bucket?.kwh.length || 0;
+      let todayTotal = totalKwh || 0;
+      if (hoursWithData > 0 && hoursWithData < 24) {
+        const doy = dayOfYear(d);
+        const remainingHours = 24 - hoursWithData;
+        const t = avgTemp ?? 5;
+        todayTotal += predict(t, doy) * remainingHours * biasRatio;
+      }
+      predictedConsumption.push(todayTotal);
+      predictedHigh.push(todayTotal);
+      predictedLow.push(todayTotal);
       forecastTemp.push(avgTemp);
       forecastTempP10.push(avgTemp);
       forecastTempP90.push(avgTemp);
@@ -797,10 +832,16 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     const dateStr = d.toISOString().slice(0, 10);
     dates.push(dateStr);
 
+    // Check for partial actual data (transition day near "now")
+    const fBucket = dailyBuckets.get(dateStr);
+    const hoursWithData = fBucket?.kwh.length || 0;
+    const actualKwh = hoursWithData > 0
+      ? fBucket.kwh.reduce((s, v) => s + v, 0) : 0;
+
     actualConsumption.push(null);
     actualTemp.push(null);
 
-    // Samle timedata for denne dagen
+    // Predict full day using forecast data
     const dayHourly = [];
     for (let h = 0; h < 24; h++) {
       const hKey = `${dateStr}T${String(h).padStart(2, '0')}`;
@@ -808,43 +849,70 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     }
 
     const doy = dayOfYear(d);
+    let fullDayKwh, fullDayHigh, fullDayLow;
+    let dayTemp, dayTp10, dayTp90;
+
     if (dayHourly.length >= 20) {
-      // Har timedata: prediker per datapunkt, skaler til dagstotal
-      let dayKwh = 0, dayHigh = 0, dayLow = 0;
-      let tempSum = 0, tp10Sum = 0, tp90Sum = 0;
+      let kwh = 0, high = 0, low = 0;
+      let tSum = 0, t10Sum = 0, t90Sum = 0;
       for (const hf of dayHourly) {
         const t = hf.temp ?? 5;
         const tp10 = hf.temp_p10 ?? t - 3;
         const tp90 = hf.temp_p90 ?? t + 3;
-        dayKwh += predict(t, doy);
-        dayHigh += predict(tp10, doy);
-        dayLow += predict(tp90, doy);
-        tempSum += t;
-        tp10Sum += tp10;
-        tp90Sum += tp90;
+        kwh += predict(t, doy);
+        high += predict(tp10, doy);
+        low += predict(tp90, doy);
+        tSum += t;
+        t10Sum += tp10;
+        t90Sum += tp90;
       }
       const n = dayHourly.length;
       const scale = 24 / n;
-      predictedConsumption.push(dayKwh * scale);
-      predictedHigh.push(dayHigh * scale);
-      predictedLow.push(dayLow * scale);
-      forecastTemp.push(tempSum / n);
-      forecastTempP10.push(tp10Sum / n);
-      forecastTempP90.push(tp90Sum / n);
+      fullDayKwh = kwh * scale;
+      fullDayHigh = high * scale;
+      fullDayLow = low * scale;
+      dayTemp = tSum / n;
+      dayTp10 = t10Sum / n;
+      dayTp90 = t90Sum / n;
     } else {
-      // Daglig snitt fra subseasonal eller historikk
       const fc = dailyMap.get(dateStr);
       const mmdd = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const tempMean = fc?.temp_mean ?? historicalTemps.get(mmdd) ?? 5;
-      const tempP10 = fc?.temp_p10 ?? tempMean - 3;
-      const tempP90 = fc?.temp_p90 ?? tempMean + 3;
+      const tp10 = fc?.temp_p10 ?? tempMean - 3;
+      const tp90 = fc?.temp_p90 ?? tempMean + 3;
+      fullDayKwh = predict(tempMean, doy) * 24;
+      fullDayHigh = predict(tp10, doy) * 24;
+      fullDayLow = predict(tp90, doy) * 24;
+      dayTemp = tempMean;
+      dayTp10 = tp10;
+      dayTp90 = tp90;
+    }
 
-      predictedConsumption.push(predict(tempMean, doy) * 24);
-      predictedHigh.push(predict(tempP10, doy) * 24);
-      predictedLow.push(predict(tempP90, doy) * 24);
-      forecastTemp.push(tempMean);
-      forecastTempP10.push(tempP10);
-      forecastTempP90.push(tempP90);
+    // Apply bias correction; blend with actual data for partial days
+    if (hoursWithData > 0) {
+      const remainingFraction = (24 - hoursWithData) / 24;
+      predictedConsumption.push(actualKwh + fullDayKwh * remainingFraction * biasRatio);
+      predictedHigh.push(actualKwh + fullDayHigh * remainingFraction * biasRatio);
+      predictedLow.push(actualKwh + fullDayLow * remainingFraction * biasRatio);
+      const actualAvgTemp = fBucket.temp.length > 0
+        ? fBucket.temp.reduce((s, v) => s + v, 0) / fBucket.temp.length : null;
+      if (actualAvgTemp != null) {
+        const wA = hoursWithData / 24;
+        forecastTemp.push(actualAvgTemp * wA + dayTemp * (1 - wA));
+        forecastTempP10.push(actualAvgTemp * wA + dayTp10 * (1 - wA));
+        forecastTempP90.push(actualAvgTemp * wA + dayTp90 * (1 - wA));
+      } else {
+        forecastTemp.push(dayTemp);
+        forecastTempP10.push(dayTp10);
+        forecastTempP90.push(dayTp90);
+      }
+    } else {
+      predictedConsumption.push(fullDayKwh * biasRatio);
+      predictedHigh.push(fullDayHigh * biasRatio);
+      predictedLow.push(fullDayLow * biasRatio);
+      forecastTemp.push(dayTemp);
+      forecastTempP10.push(dayTp10);
+      forecastTempP90.push(dayTp90);
     }
   }
 

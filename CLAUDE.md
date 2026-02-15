@@ -315,7 +315,7 @@ jobs:
 - **`fetchForecast(lat, lon)`**: Henter temperaturprognose fra `/api/forecast` med `cache: 'no-cache'` (bypass nettleserens HTTP-cache), cacher i localStorage (1t TTL)
 - **`historicalDailyTemps(data)`**: Bygger lookup `MM-DD → snitttemperatur` fra historisk data. Brukes som fallback når prognose mangler
 - **`monthlyProjection(monthData, forecast, histTemps, coeffs)`**: Beregner kumulativt forbruk for inneværende måned. Kombinerer faktisk forbruk (fortid), sesongmodell + temperaturprognose (fremtid), med usikkerhetsbånd (p10/p90). Fallback-kjede: timeprognose (≥20 datapunkter/dag) → dagsprognose (Subseasonal) → historisk snitt
-- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Bruker timedata kun for dager med ≥20 datapunkter (full timedekning); 6-timersdata (4 punkter/dag) faller til Subseasonal dagsprognose for å unngå temperaturspiker ved overgang mellom datakilder
+- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Bruker timedata kun for dager med ≥20 datapunkter (full timedekning); 6-timersdata (4 punkter/dag) faller til Subseasonal dagsprognose for å unngå temperaturspiker ved overgang mellom datakilder. **Bias-korreksjon**: beregner ratio mellom faktisk og modell-predikert forbruk for siste 7 komplette dager (≥20 timer, ≥3 dager kreves), skalerer alle prognoseverdier med denne faktoren for sømløs overgang. **Overgangsdager** med delvis faktisk data blandes: `faktisk_kWh + predikert_resterende × biasRatio`, temperatur vektes tilsvarende
 
 ## Backfill (initial datainnhenting)
 
