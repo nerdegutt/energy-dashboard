@@ -797,12 +797,6 @@ export function renderCumulativeChart(projectionData) {
         symbol: 'none',
         itemStyle: { color: CYAN },
         lineStyle: { color: CYAN, width: 2 },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(34, 211, 238, 0.25)' },
-            { offset: 1, color: 'rgba(34, 211, 238, 0)' },
-          ]),
-        },
         z: 2,
       },
       {
@@ -946,12 +940,6 @@ export function renderForecastChart(timelineData) {
         symbol: 'none',
         itemStyle: { color: CYAN },
         lineStyle: { color: CYAN, width: 2 },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(34, 211, 238, 0.15)' },
-            { offset: 1, color: 'rgba(34, 211, 238, 0)' },
-          ]),
-        },
       },
       // Predicted consumption
       {
