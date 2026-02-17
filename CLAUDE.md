@@ -239,8 +239,8 @@ jobs:
 **Alle perioder:**
 - **Gauge**: Snitt for valgt periode (dynamisk label). I 24t-visning vises avvik fra forventet (sesongmodell)
 - **Linjegraf** (dual-axis): Forbruk + rullende snitt (skjult i 24t-modus) + temperatur
-- **Kumulativ strømstøtte** (kun individuelle hjem): Kumulativt forbruk denne måneden med projisert total mot 5000 kWh-grensen. Viser faktisk (hel linje), projisert (stiplet), usikkerhetsbånd (p10/p90), og daglig forbruk som søyler. Bruker temperaturprognose fra met.no + sesongmodell for prediksjon
-- **Forbruksprognose** (7d + 21d): 7 dager tilbake med faktisk forbruk + 21 dager fremover med predikert forbruk. Dual-axis med temperatur. Usikkerhetsbånd for både forbruk og temperatur. Bruker timedata fra Locationforecast (kort horisont) og daglige snitt fra Subseasonal (lang horisont)
+- **Kumulativ strømstøtte** (kun individuelle hjem): Kumulativt forbruk denne måneden med prognose mot 5000 kWh-grensen. Viser faktisk (hel linje), prognose (stiplet), usikkerhetsbånd (p10/p90), og daglig forbruk som søyler. Tooltip bruker kontekstuelle labels: «Dagsforbruk»/«Månedsforbruk» for fortid, «Dagsforbruk (prognose)»/«Månedsforbruk (prognose)» for i dag og fremtid. For dagens dato skjules «Månedsforbruk» (identisk med prognose)
+- **Forbruksprognose** (7d + 21d): 7 dager tilbake med faktisk forbruk + 21 dager fremover med forbruksprognose. Dual-axis med temperatur. Usikkerhetsbånd for både forbruk og temperatur. Bruker timedata fra Locationforecast (kort horisont) og daglige snitt fra Subseasonal (lang horisont). For dagens dato viser tooltip kun prognoseverdier (målt og prognose er blandet og dermed like)
 - **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode, grønn fyll der siste år < forrige periode. Tooltip viser prosentvis differanse. Legend: "Siste år" (cyan) og "Forrige periode" (lilla).
 - **Månedlig endring**: Prosentvis endring per måned vs. tilsvarende måned året før. Grønn = mindre, rød = mer. Labels over stolpene viser %-verdi. Tooltip: "x% mer/mindre enn året før".
 - **Månedlig totalforbruk**: Gruppert stolpediagram som viser totalt forbruk per måned (jan–des), med én stolpe per tilgjengelig år. Henter data separat fra 1. januar `currentYear-2` (maks 2 hele foregående år + inneværende). Første ufullstendige måned skippes automatisk. Inneværende måned viser faktisk forbruk + projisert rest (transparent forlengelse) basert på `monthlyProjection`. Rød stiplet markLine på 5000 kWh (strømstøttegrense, kun individuelle hjem). Farger: oransje, lilla, cyan, grønn (syklisk). Tooltip viser faktisk + projisert total i parentes.
@@ -323,8 +323,35 @@ jobs:
 - **`consumptionDeviation(data, coeffs)`**: Beregner avvik mellom faktisk og forventet forbruk siste 24t. Bruker sesongmodell med doy for sesongkorrigert forventning
 - **`fetchForecast(lat, lon)`**: Henter temperaturprognose fra `/api/forecast` med `cache: 'no-cache'` (bypass nettleserens HTTP-cache), cacher i localStorage (1t TTL)
 - **`historicalDailyTemps(data)`**: Bygger lookup `MM-DD → snitttemperatur` fra historisk data. Brukes som fallback når prognose mangler
-- **`monthlyProjection(monthData, forecast, histTemps, coeffs)`**: Beregner kumulativt forbruk for inneværende måned. Kombinerer faktisk forbruk (fortid), sesongmodell + temperaturprognose (fremtid), med usikkerhetsbånd (p10/p90). Fallback-kjede: timeprognose (≥20 datapunkter/dag) → dagsprognose (Subseasonal) → historisk snitt
-- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Bruker timedata kun for dager med ≥20 datapunkter (full timedekning); 6-timersdata (4 punkter/dag) faller til Subseasonal dagsprognose for å unngå temperaturspiker ved overgang mellom datakilder. **Bias-korreksjon**: beregner ratio mellom faktisk og modell-predikert forbruk for siste 7 komplette dager (≥20 timer, ≥3 dager kreves), skalerer alle prognoseverdier med denne faktoren for sømløs overgang. **Overgangsdager** med delvis faktisk data blandes: `faktisk_kWh + predikert_resterende × biasRatio`, temperatur vektes tilsvarende
+- **`monthlyProjection(monthData, forecast, histTemps, coeffs)`**: Beregner kumulativt forbruk for inneværende måned med usikkerhetsbånd (p10/p90). **Bias-korreksjon**: sammenligner faktisk vs modell-predikert for siste 7 komplette dager, skalerer prognoser med denne faktoren. Fallback-kjede for temperatur: timeprognose (≥20 datapunkter/dag) → dagsprognose (Subseasonal) → historisk snitt. Se «Datasammenblanding for dagens dato» nedenfor
+- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Bruker timedata kun for dager med ≥20 datapunkter (full timedekning); 6-timersdata (4 punkter/dag) faller til Subseasonal dagsprognose for å unngå temperaturspiker ved overgang mellom datakilder. **Bias-korreksjon**: beregner ratio mellom faktisk og modell-predikert forbruk for siste 7 komplette dager (≥20 timer, ≥3 dager kreves), skalerer alle prognoseverdier med denne faktoren for sømløs overgang. **Overgangsdager** med delvis faktisk data blandes: `faktisk_kWh + predikert_resterende × biasRatio`, temperatur vektes tilsvarende. Se «Datasammenblanding for dagens dato» nedenfor
+
+### Datasammenblanding for dagens dato
+
+Tibber-data har typisk 1–3 timers forsinkelse, og kan ha hull (manglende timer) for inneværende dag. Begge prognosefunksjonene (`monthlyProjection` og `forecastTimeline`) bruker derfor en time-for-time-tilnærming for dagens dato:
+
+| Timer | Datakilde | Forklaring |
+|-------|-----------|------------|
+| Passerte timer med Tibber-data | Faktisk målt forbruk | Brukes direkte |
+| Passerte timer uten data (hull) | Sesongmodell × biasRatio | Tibber-forsinkelser eller manglende data |
+| Fremtidige timer | Sesongmodell × biasRatio + forecast-temp | Temperatur fra met.no Locationforecast |
+
+**Hvorfor hull-fylling er nødvendig**: Uten hull-fylling ville summen av «faktisk forbruk i dag» vært for lav (manglende timer = 0), og prognosen for resten av dagen ville startet fra feil grunnlinje. Ved å fylle hull med modellprediksjoner får vi en realistisk dagstotal uavhengig av Tibber-forsinkelser.
+
+**Temperatur for i dag**: Vektet snitt av faktisk målt temperatur (for passerte timer) og met.no-prognose (for gjenstående timer). Vekten er `antall_timer_med_temp / 24`.
+
+**Konsekvens for tooltip**: Siden dagens verdier er en blanding av målt og predikert, vises ikke separate «målt»-verdier i tooltip – de ville vært misvisende. Tooltip viser kun prognoseverdier for dagens dato i begge grafene.
+
+Sammenligning av tidsperioder i prognosegrafene:
+
+| Periode | Kumulativ graf | Prognosegraf |
+|---------|----------------|--------------|
+| Fortid (ferdig dag) | Faktisk forbruk, summert kumulativt | Faktisk dagsforbruk + målt temperatur |
+| I dag | Time-for-time: målt + hull-fylt + prognose | Samme tilnærming, begge linjer møtes |
+| Fremtid (kort, ≤3d) | Sesongmodell × biasRatio, timetemperaturer fra Locationforecast | Samme |
+| Fremtid (middels, 3–10d) | Sesongmodell × biasRatio, 6-timers → daglige temperaturer | Samme |
+| Fremtid (lang, 10–21d) | Sesongmodell × biasRatio, daglige snitt fra Subseasonal | Kun prognosegraf (kumulativ dekker kun inneværende måned) |
+| Fremtid (>21d) | Sesongmodell × biasRatio, historisk snitt-temperatur som fallback | Kun kumulativ (for resten av måneden) |
 
 ## Backfill (initial datainnhenting)
 
@@ -359,6 +386,7 @@ curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000&h
 - GitHub Actions cron er ikke presis (5-15 min forsinkelse), men irrelevant for timedata
 - `vercel dev` leser `.env.local` (ikke `.env`) – bruk `vercel env pull` eller opprett manuelt
 - Collect lagrer rader med null consumption (Tibber returnerer null for nylige timer) – temperaturdata bevares
+- Tibber-data kan ha hull (manglende timer) for inneværende dag pga forsinkelser – prognosefunksjoner fyller hull med modellprediksjoner time-for-time
 - Alle client-side beregninger håndterer null-verdier i consumption_kwh
 - met.no API-er (Locationforecast, Subseasonal) krever `User-Agent`-header – proxyes via `/api/forecast.js` for å unngå CORS
 - Sesongmodellen beregnes fra siste 1 års timedata (~8760 punkter) og brukes av alle prognosegrafer + gauge-avvik

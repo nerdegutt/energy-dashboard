@@ -678,7 +678,8 @@ export function renderMonthlyChangeChart(monthlyChange) {
 export function renderCumulativeChart(projectionData) {
   const chart = getOrCreate('cumulative-chart');
 
-  const { dates, actual, projected, projectedHigh, projectedLow, dailyKwh, limit } = projectionData;
+  const { dates, actual, projected, projectedHigh, projectedLow, dailyKwh, limit,
+          todayIndex: cumTodayIdx } = projectionData;
 
   const todayIdx = actual.findIndex((v, i) => v != null && projected[i] != null);
 
@@ -707,19 +708,27 @@ export function renderCumulativeChart(projectionData) {
 
   chart.setOption({
     title: { text: 'Strømstøtte: Kumulativt forbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
-    aria: { enabled: true, label: { description: `Kumulativ graf over strømforbruk denne måneden. Projisert total: ${Math.round(projectionData.projectedTotal)} kWh. Grense: ${limit} kWh.` } },
+    aria: { enabled: true, label: { description: `Kumulativ graf over strømforbruk denne måneden. Prognose total: ${Math.round(projectionData.projectedTotal)} kWh. Grense: ${limit} kWh.` } },
     tooltip: baseTooltip({
       trigger: 'axis',
       formatter: (params) => {
         const idx = params[0].dataIndex;
         const date = labels[idx];
+        const isPast = idx < cumTodayIdx;
         const lines = [];
+
         for (const p of params) {
           if (['BandBase', 'Usikkerhet'].includes(p.seriesName)) continue;
-          if (p.value != null) {
-            lines.push(`${p.marker} ${p.seriesName}: ${Math.round(p.value)} kWh`);
-          }
+          if (p.value == null) continue;
+          if (idx === cumTodayIdx && p.seriesName === 'Faktisk') continue;
+          const label = p.seriesName === 'Daglig forbruk'
+            ? (isPast ? 'Dagsforbruk' : 'Dagsforbruk (prognose)')
+            : p.seriesName === 'Faktisk' ? 'Månedsforbruk'
+            : p.seriesName === 'Prognose' ? 'Månedsforbruk (prognose)'
+            : p.seriesName;
+          lines.push(`${p.marker} ${label}: ${Math.round(p.value)} kWh`);
         }
+
         if (projectedHigh[idx] != null && projectedLow[idx] != null) {
           lines.push(`Intervall: ${Math.round(projectedLow[idx])} – ${Math.round(projectedHigh[idx])} kWh`);
         }
@@ -727,7 +736,7 @@ export function renderCumulativeChart(projectionData) {
       },
     }),
     legend: {
-      data: ['Faktisk', 'Projisert', 'Daglig forbruk'],
+      data: ['Faktisk', 'Prognose', 'Daglig forbruk'],
       textStyle: baseTextStyle(),
       top: 20,
     },
@@ -777,7 +786,7 @@ export function renderCumulativeChart(projectionData) {
         z: 2,
       },
       {
-        name: 'Projisert',
+        name: 'Prognose',
         type: 'line',
         data: projected,
         smooth: true,
@@ -825,7 +834,8 @@ export function renderForecastChart(timelineData) {
   const chart = getOrCreate('forecast-chart');
 
   const { dates, actualConsumption, predictedConsumption, predictedHigh, predictedLow,
-          actualTemp, forecastTemp, forecastTempP10, forecastTempP90 } = timelineData;
+          actualTemp, forecastTemp, forecastTempP10, forecastTempP90,
+          todayIndex, todayActualTemp } = timelineData;
 
   const labels = dates.map(d => {
     const dt = new Date(d);
@@ -853,15 +863,17 @@ export function renderForecastChart(timelineData) {
 
   chart.setOption({
     title: { text: 'Forbruksprognose (7d + 21d)', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
-    aria: { enabled: true, label: { description: 'Forbruksprognose: 7 dager tilbake med faktisk forbruk og 21 dager fremover med predikert forbruk basert på temperaturprognose' } },
+    aria: { enabled: true, label: { description: 'Forbruksprognose: 7 dager tilbake med faktisk forbruk og 21 dager fremover med forbruksprognose basert på temperaturprognose' } },
     tooltip: baseTooltip({
       trigger: 'axis',
       formatter: (params) => {
         const idx = params[0].dataIndex;
         const date = labels[idx];
+        const isToday = idx === todayIndex;
         const lines = [];
         for (const p of params) {
           if (['ConsBandBase', 'ConsUsikkerhet', 'TempBandBase', 'TempUsikkerhet'].includes(p.seriesName)) continue;
+          if (isToday && (p.seriesName === 'Forbruk' || p.seriesName === 'Temperatur')) continue;
           if (p.value != null) {
             const isTemp = p.seriesName.includes('Temp') || p.seriesName.includes('temp');
             const val = isTemp ? p.value - TEMP_OFFSET : p.value;
@@ -873,7 +885,7 @@ export function renderForecastChart(timelineData) {
       },
     }),
     legend: {
-      data: ['Forbruk', 'Predikert forbruk', 'Temperatur', 'Temp.prognose'],
+      data: ['Forbruk', 'Forbruksprognose', 'Temperatur', 'Temp.prognose'],
       textStyle: baseTextStyle(),
       top: 20,
     },
@@ -917,7 +929,7 @@ export function renderForecastChart(timelineData) {
       },
       // Predicted consumption
       {
-        name: 'Predikert forbruk',
+        name: 'Forbruksprognose',
         type: 'line',
         data: predictedConsumption,
         smooth: true,
@@ -1049,7 +1061,7 @@ export function renderMonthlyTotalChart({ months, years, series }, projectedTota
     const projData = new Array(12).fill(null);
     projData[currentMonth] = remainder;
     echartsSeries.push({
-      name: 'Projisert',
+      name: 'Prognose',
       type: 'bar',
       stack: 'current',
       data: projData,
@@ -1063,7 +1075,7 @@ export function renderMonthlyTotalChart({ months, years, series }, projectedTota
   }
 
   const legendData = years.map(String);
-  if (hasProjection && remainder > 0) legendData.push('Projisert');
+  if (hasProjection && remainder > 0) legendData.push('Prognose');
 
   chart.setOption({
     title: { text: 'Månedlig totalforbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
@@ -1071,13 +1083,13 @@ export function renderMonthlyTotalChart({ months, years, series }, projectedTota
     tooltip: baseTooltip({
       trigger: 'axis',
       formatter: (params) => {
-        const proj = params.find(p => p.seriesName === 'Projisert');
+        const proj = params.find(p => p.seriesName === 'Prognose');
         const lines = params
-          .filter(p => p.value != null && p.seriesName !== 'Projisert')
+          .filter(p => p.value != null && p.seriesName !== 'Prognose')
           .map(p => {
             let text = `${p.marker} ${p.seriesName}: ${Number(p.value).toLocaleString('nb-NO')} kWh`;
             if (proj && proj.value != null && p.seriesName === String(currentYear)) {
-              text += ` (proj. ${Number(p.value + proj.value).toLocaleString('nb-NO')})`;
+              text += ` (prognose ${Number(p.value + proj.value).toLocaleString('nb-NO')})`;
             }
             return text;
           });

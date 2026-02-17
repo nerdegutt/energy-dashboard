@@ -314,7 +314,7 @@ async function loadData(days) {
           cumulativePanel.classList.remove('hidden');
           renderCumulativeChart(projResult);
           buildTable('cumulative-chart',
-            ['Dato', 'Daglig (kWh)', 'Faktisk (kWh)', 'Projisert (kWh)', 'Høy (kWh)', 'Lav (kWh)'],
+            ['Dato', 'Daglig (kWh)', 'Faktisk (kWh)', 'Prognose (kWh)', 'Høy (kWh)', 'Lav (kWh)'],
             projResult.dates.map((d, i) => [
               fmtTs(d + 'T00:00:00', true),
               projResult.dailyKwh[i] != null ? Math.round(projResult.dailyKwh[i]).toString() : '\u2013',
@@ -333,7 +333,7 @@ async function loadData(days) {
         forecastPanel.classList.remove('hidden');
         renderForecastChart(timelineResult);
         buildTable('forecast-chart',
-          ['Dato', 'Forbruk (kWh)', 'Predikert (kWh)', 'Temperatur (\u00b0C)', 'Temp.prognose (\u00b0C)'],
+          ['Dato', 'Forbruk (kWh)', 'Prognose (kWh)', 'Temperatur (\u00b0C)', 'Temp.prognose (\u00b0C)'],
           timelineResult.dates.map((d, i) => [
             fmtTs(d + 'T00:00:00', true),
             fmtKwh(timelineResult.actualConsumption[i]),
