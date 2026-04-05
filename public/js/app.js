@@ -352,6 +352,43 @@ async function loadData(days) {
       forecastPanel.classList.add('hidden');
     }
 
+    // Gauge-stats: siste 12 mnd + forventet denne måneden, med endring vs forrige periode
+    {
+      const statsEl = document.getElementById('gauge-stats');
+      const now = new Date();
+      const oneYearAgo = new Date(now);
+      oneYearAgo.setFullYear(now.getFullYear() - 1);
+      const twoYearsAgo = new Date(now);
+      twoYearsAgo.setFullYear(now.getFullYear() - 2);
+
+      const yearTotal = yoyData
+        .filter(d => d.consumption_kwh != null && new Date(d.timestamp) >= oneYearAgo)
+        .reduce((s, d) => s + d.consumption_kwh, 0);
+      const prevYearTotal = yoyData
+        .filter(d => { const t = new Date(d.timestamp); return d.consumption_kwh != null && t >= twoYearsAgo && t < oneYearAgo; })
+        .reduce((s, d) => s + d.consumption_kwh, 0);
+
+      const fmtChange = (curr, prev) => {
+        if (!prev) return '';
+        const pct = ((curr - prev) / prev) * 100;
+        const color = pct <= 0 ? '#22c55e' : '#ef4444';
+        const sign = pct > 0 ? '+' : '';
+        return `<span style="color:${color}">(${sign}${pct.toFixed(0)} %)</span>`;
+      };
+
+      const lines = [`12 mnd: ${Math.round(yearTotal).toLocaleString('nb-NO')} kWh ${fmtChange(yearTotal, prevYearTotal)}`];
+      if (projectedMonthTotal != null) {
+        const lastYearMonth = yoyData.filter(d => {
+          const t = new Date(d.timestamp);
+          return d.consumption_kwh != null && t.getMonth() === now.getMonth() && t.getFullYear() === now.getFullYear() - 1;
+        });
+        const prevMonthTotal = lastYearMonth.reduce((s, d) => s + d.consumption_kwh, 0);
+        const monthName = now.toLocaleString('nb-NO', { month: 'short' }).replace('.', '');
+        lines.push(`Progn. ${monthName}: ${Math.round(projectedMonthTotal).toLocaleString('nb-NO')} kWh ${fmtChange(projectedMonthTotal, prevMonthTotal)}`);
+      }
+      statsEl.innerHTML = lines.join('<br>');
+    }
+
     // Månedlig totalforbruk: maks 2 hele foregående år + inneværende
     const mtStart = new Date(new Date().getFullYear() - 2, 0, 1);
     const mtDays = Math.ceil((Date.now() - mtStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
