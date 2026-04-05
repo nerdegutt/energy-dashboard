@@ -597,10 +597,6 @@ export function monthlyProjection(monthData, forecast, historicalTemps, coeffs) 
     }
   }
 
-  // Ingen bias-korreksjon for månedsprognosen – sesongmodellen er trent på et helt
-  // år med MAD-outlier-fjerning og er robust nok alene. Bias-korreksjon med 7-dagers
-  // vindu er for sårbar for midlertidige forbrukstopper (f.eks. bassengoppvarming).
-
   const dates = [];
   const actual = [];
   const projected = [];
@@ -761,9 +757,6 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     if (d.consumption_kwh != null) bucket.kwh.push(d.consumption_kwh);
     if (d.outside_temp_c != null) bucket.temp.push(d.outside_temp_c);
   }
-
-  // Ingen bias-korreksjon – sesongmodellen brukes direkte for å unngå at
-  // midlertidige forbrukstopper (f.eks. bassengoppvarming) forplantes til prognosen.
 
   const dates = [];
   const actualConsumption = [];
@@ -931,7 +924,7 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
       dayTp90 = tp90;
     }
 
-    // Apply bias correction; blend with actual data for partial days
+    // Blend with actual data for partial days
     if (hoursWithData > 0) {
       const remainingFraction = (24 - hoursWithData) / 24;
       predictedConsumption.push(actualKwh + fullDayKwh * remainingFraction);
