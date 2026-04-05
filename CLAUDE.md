@@ -324,7 +324,7 @@ jobs:
 - **`fetchForecast(lat, lon)`**: Henter temperaturprognose fra `/api/forecast` med `cache: 'no-cache'` (bypass nettleserens HTTP-cache), cacher i localStorage (1t TTL)
 - **`historicalDailyTemps(data)`**: Bygger lookup `MM-DD → snitttemperatur` fra historisk data. Brukes som fallback når prognose mangler
 - **`monthlyProjection(monthData, forecast, histTemps, coeffs)`**: Beregner kumulativt forbruk for inneværende måned med usikkerhetsbånd (p10/p90). Ingen bias-korreksjon – sesongmodellen brukes direkte for å unngå at midlertidige forbrukstopper (f.eks. bassengoppvarming) forplantes til hele månedsprognosen. Fallback-kjede for temperatur: timeprognose (≥20 datapunkter/dag) → dagsprognose (Subseasonal) → historisk snitt. Se «Datasammenblanding for dagens dato» nedenfor
-- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Bruker timedata kun for dager med ≥20 datapunkter (full timedekning); 6-timersdata (4 punkter/dag) faller til Subseasonal dagsprognose for å unngå temperaturspiker ved overgang mellom datakilder. **Bias-korreksjon**: beregner ratio mellom faktisk og modell-predikert forbruk for siste 7 komplette dager (≥20 timer, ≥3 dager kreves), skalerer alle prognoseverdier med denne faktoren for sømløs overgang. **Overgangsdager** med delvis faktisk data blandes: `faktisk_kWh + predikert_resterende × biasRatio`, temperatur vektes tilsvarende. Se «Datasammenblanding for dagens dato» nedenfor
+- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Bruker timedata kun for dager med ≥20 datapunkter (full timedekning); 6-timersdata (4 punkter/dag) faller til Subseasonal dagsprognose for å unngå temperaturspiker ved overgang mellom datakilder. Ingen bias-korreksjon – sesongmodellen brukes direkte for å unngå at midlertidige forbrukstopper forplantes til prognosen. **Overgangsdager** med delvis faktisk data blandes: `faktisk_kWh + predikert_resterende`, temperatur vektes tilsvarende. Se «Datasammenblanding for dagens dato» nedenfor
 
 ### Datasammenblanding for dagens dato
 
@@ -333,8 +333,8 @@ Tibber-data har typisk 1–3 timers forsinkelse, og kan ha hull (manglende timer
 | Timer | Datakilde | Forklaring |
 |-------|-----------|------------|
 | Passerte timer med Tibber-data | Faktisk målt forbruk | Brukes direkte |
-| Passerte timer uten data (hull) | Sesongmodell × biasRatio | Tibber-forsinkelser eller manglende data |
-| Fremtidige timer | Sesongmodell × biasRatio + forecast-temp | Temperatur fra met.no Locationforecast |
+| Passerte timer uten data (hull) | Sesongmodell | Tibber-forsinkelser eller manglende data |
+| Fremtidige timer | Sesongmodell + forecast-temp | Temperatur fra met.no Locationforecast |
 
 **Hvorfor hull-fylling er nødvendig**: Uten hull-fylling ville summen av «faktisk forbruk i dag» vært for lav (manglende timer = 0), og prognosen for resten av dagen ville startet fra feil grunnlinje. Ved å fylle hull med modellprediksjoner får vi en realistisk dagstotal uavhengig av Tibber-forsinkelser.
 
@@ -348,10 +348,10 @@ Sammenligning av tidsperioder i prognosegrafene:
 |---------|----------------|--------------|
 | Fortid (ferdig dag) | Faktisk forbruk, summert kumulativt | Faktisk dagsforbruk + målt temperatur |
 | I dag | Time-for-time: målt + hull-fylt + prognose | Samme tilnærming, begge linjer møtes |
-| Fremtid (kort, ≤3d) | Sesongmodell × biasRatio, timetemperaturer fra Locationforecast | Samme |
-| Fremtid (middels, 3–10d) | Sesongmodell × biasRatio, 6-timers → daglige temperaturer | Samme |
-| Fremtid (lang, 10–21d) | Sesongmodell × biasRatio, daglige snitt fra Subseasonal | Kun prognosegraf (kumulativ dekker kun inneværende måned) |
-| Fremtid (>21d) | Sesongmodell × biasRatio, historisk snitt-temperatur som fallback | Kun kumulativ (for resten av måneden) |
+| Fremtid (kort, ≤3d) | Sesongmodell, timetemperaturer fra Locationforecast | Samme |
+| Fremtid (middels, 3–10d) | Sesongmodell, 6-timers → daglige temperaturer | Samme |
+| Fremtid (lang, 10–21d) | Sesongmodell, daglige snitt fra Subseasonal | Kun prognosegraf (kumulativ dekker kun inneværende måned) |
+| Fremtid (>21d) | Sesongmodell, historisk snitt-temperatur som fallback | Kun kumulativ (for resten av måneden) |
 
 ## Backfill (initial datainnhenting)
 

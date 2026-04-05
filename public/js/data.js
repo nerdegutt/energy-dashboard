@@ -762,31 +762,8 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     if (d.outside_temp_c != null) bucket.temp.push(d.outside_temp_c);
   }
 
-  // --- Bias correction ---
-  // Compare actual vs model-predicted for recent complete days
-  let biasRatio = 1;
-  {
-    const actuals = [];
-    const preds = [];
-    for (let i = pastDays; i >= 1; i--) {
-      const bd = new Date(now);
-      bd.setDate(bd.getDate() - i);
-      const bDateStr = toLocalDateStr(bd);
-      const bb = dailyBuckets.get(bDateStr);
-      if (!bb || bb.kwh.length < 20) continue;
-      const actual = bb.kwh.reduce((s, v) => s + v, 0);
-      const avgT = bb.temp.length > 0
-        ? bb.temp.reduce((s, v) => s + v, 0) / bb.temp.length : null;
-      if (avgT == null) continue;
-      actuals.push(actual);
-      preds.push(predict(avgT, dayOfYear(bd)) * 24);
-    }
-    if (actuals.length >= 3) {
-      const sA = actuals.reduce((s, v) => s + v, 0);
-      const sP = preds.reduce((s, v) => s + v, 0);
-      if (sP > 0) biasRatio = Math.max(0.5, Math.min(2.0, sA / sP));
-    }
-  }
+  // Ingen bias-korreksjon – sesongmodellen brukes direkte for å unngå at
+  // midlertidige forbrukstopper (f.eks. bassengoppvarming) forplantes til prognosen.
 
   const dates = [];
   const actualConsumption = [];
@@ -836,7 +813,7 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
           const hKey = `${dateStr}T${String(h).padStart(2, '0')}`;
           const hf = hourlyMap.get(hKey);
           const t = hf?.temp ?? (dailyMap.get(dateStr)?.temp_mean ?? historicalTemps.get(mmdd) ?? avgTemp ?? 5);
-          todayTotal += predict(t, doy) * biasRatio;
+          todayTotal += predict(t, doy);
         }
       }
 
@@ -957,9 +934,9 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     // Apply bias correction; blend with actual data for partial days
     if (hoursWithData > 0) {
       const remainingFraction = (24 - hoursWithData) / 24;
-      predictedConsumption.push(actualKwh + fullDayKwh * remainingFraction * biasRatio);
-      predictedHigh.push(actualKwh + fullDayHigh * remainingFraction * biasRatio);
-      predictedLow.push(actualKwh + fullDayLow * remainingFraction * biasRatio);
+      predictedConsumption.push(actualKwh + fullDayKwh * remainingFraction);
+      predictedHigh.push(actualKwh + fullDayHigh * remainingFraction);
+      predictedLow.push(actualKwh + fullDayLow * remainingFraction);
       const actualAvgTemp = fBucket.temp.length > 0
         ? fBucket.temp.reduce((s, v) => s + v, 0) / fBucket.temp.length : null;
       if (actualAvgTemp != null) {
@@ -973,9 +950,9 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
         forecastTempP90.push(dayTp90);
       }
     } else {
-      predictedConsumption.push(fullDayKwh * biasRatio);
-      predictedHigh.push(fullDayHigh * biasRatio);
-      predictedLow.push(fullDayLow * biasRatio);
+      predictedConsumption.push(fullDayKwh);
+      predictedHigh.push(fullDayHigh);
+      predictedLow.push(fullDayLow);
       forecastTemp.push(dayTemp);
       forecastTempP10.push(dayTp10);
       forecastTempP90.push(dayTp90);
