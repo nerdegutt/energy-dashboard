@@ -588,40 +588,18 @@ export function monthlyProjection(monthData, forecast, historicalTemps, coeffs) 
     for (const d of forecast.daily) dailyMap.set(d.date, d);
   }
 
-  // Aggregate actual daily consumption + temps from monthData
+  // Aggregate actual daily consumption from monthData
   const actualDaily = new Map();
-  const actualDailyTemps = new Map();
   for (const d of monthData) {
     const day = new Date(d.timestamp).getDate();
     if (d.consumption_kwh != null) {
       actualDaily.set(day, (actualDaily.get(day) || 0) + d.consumption_kwh);
     }
-    if (d.outside_temp_c != null) {
-      if (!actualDailyTemps.has(day)) actualDailyTemps.set(day, []);
-      actualDailyTemps.get(day).push(d.outside_temp_c);
-    }
   }
 
-  // Bias-korreksjon: sammenlign faktisk vs modell for siste komplette dager
-  let biasRatio = 1;
-  {
-    const actuals = [];
-    const preds = [];
-    for (let d = Math.max(1, todayDate - 7); d < todayDate; d++) {
-      const dayVal = actualDaily.get(d);
-      const temps = actualDailyTemps.get(d);
-      if (!dayVal || !temps || temps.length < 20) continue;
-      const avgT = temps.reduce((s, v) => s + v, 0) / temps.length;
-      const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      actuals.push(dayVal);
-      preds.push(predict(avgT, dayOfYear(new Date(dayStr))) * 24);
-    }
-    if (actuals.length >= 3) {
-      const sA = actuals.reduce((s, v) => s + v, 0);
-      const sP = preds.reduce((s, v) => s + v, 0);
-      if (sP > 0) biasRatio = sA / sP;
-    }
-  }
+  // Ingen bias-korreksjon for månedsprognosen – sesongmodellen er trent på et helt
+  // år med MAD-outlier-fjerning og er robust nok alene. Bias-korreksjon med 7-dagers
+  // vindu er for sårbar for midlertidige forbrukstopper (f.eks. bassengoppvarming).
 
   const dates = [];
   const actual = [];
@@ -673,9 +651,9 @@ export function monthlyProjection(monthData, forecast, historicalTemps, coeffs) 
           const t = hf?.temp ?? (dailyMap.get(dateStr)?.temp_mean ?? historicalTemps.get(mmdd) ?? 5);
           const tp10 = hf?.temp_p10 ?? t - 3;
           const tp90 = hf?.temp_p90 ?? t + 3;
-          dayTotal += predict(t, doy) * biasRatio;
-          dayHigh += predict(tp10, doy) * biasRatio;
-          dayLow += predict(tp90, doy) * biasRatio;
+          dayTotal += predict(t, doy);
+          dayHigh += predict(tp10, doy);
+          dayLow += predict(tp90, doy);
         }
       }
 
@@ -712,20 +690,20 @@ export function monthlyProjection(monthData, forecast, historicalTemps, coeffs) 
           dayLow += predict(tp90, doyFuture);
         }
         const scale = 24 / dayHourly.length;
-        dayPredicted = dayMean * scale * biasRatio;
+        dayPredicted = dayMean * scale;
         cumProjected += dayPredicted;
-        cumHigh += dayHigh * scale * biasRatio;
-        cumLow += dayLow * scale * biasRatio;
+        cumHigh += dayHigh * scale;
+        cumLow += dayLow * scale;
       } else {
         const fc = dailyMap.get(dateStr);
         const mmdd = `${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const tempMean = fc?.temp_mean ?? historicalTemps.get(mmdd) ?? 5;
         const tempP10 = fc?.temp_p10 ?? tempMean - 3;
         const tempP90 = fc?.temp_p90 ?? tempMean + 3;
-        dayPredicted = predict(tempMean, doyFuture) * 24 * biasRatio;
+        dayPredicted = predict(tempMean, doyFuture) * 24;
         cumProjected += dayPredicted;
-        cumHigh += predict(tempP10, doyFuture) * 24 * biasRatio;
-        cumLow += predict(tempP90, doyFuture) * 24 * biasRatio;
+        cumHigh += predict(tempP10, doyFuture) * 24;
+        cumLow += predict(tempP90, doyFuture) * 24;
       }
       projected.push(cumProjected);
       projectedHigh.push(cumHigh);
@@ -806,7 +784,7 @@ export function forecastTimeline(recentData, forecast, historicalTemps, coeffs) 
     if (actuals.length >= 3) {
       const sA = actuals.reduce((s, v) => s + v, 0);
       const sP = preds.reduce((s, v) => s + v, 0);
-      if (sP > 0) biasRatio = sA / sP;
+      if (sP > 0) biasRatio = Math.max(0.5, Math.min(2.0, sA / sP));
     }
   }
 
