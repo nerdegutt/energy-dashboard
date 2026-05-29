@@ -144,6 +144,8 @@ Sett opp repository secrets/variables:
 - **Secret**: `CRON_SECRET` – samme verdi som i Vercel
 - **Variable**: `COLLECT_URL` – `https://din-app.vercel.app/api/collect`
 
+Workflowen (`collect.yml`) har en ekstra `keepalive`-jobb som re-aktiverer seg selv via `gh workflow enable` hver kjøring. GitHub deaktiverer ellers planlagte (cron) workflows etter 60 dager uten repo-aktivitet (commits) – keepalive-jobben hindrer dette uten tredjepartskode eller tomme commits. Krever ingen ekstra konfigurasjon.
+
 ### 8. Deploy
 
 ```bash

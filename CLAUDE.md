@@ -194,6 +194,18 @@ jobs:
       - run: |
           curl -f -X POST ${{ vars.COLLECT_URL }} \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+
+  # Re-aktiverer workflowen hver kjøring så GitHub ikke deaktiverer den
+  # etter 60 dager uten repo-aktivitet. Ingen tredjepartskode, ingen commits.
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - run: gh workflow enable collect.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
 ```
 
 ## Frontend
