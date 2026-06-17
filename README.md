@@ -37,7 +37,7 @@ kWh = a + b·T + c·T² + d·sin(2π·doy/365) + e·cos(2π·doy/365)
 ## Arkitektur
 
 ```
-GitHub Actions (cron :15 hver time)
+cron-job.org (ekstern cron, hver time)
     ↓
 /api/collect.js (Vercel serverless, henter siste 72t)
     ↓ Tibber GraphQL API → forbruksdata
@@ -65,7 +65,7 @@ Ingen build step, ingen bundler, ingen React. Bare HTML, vanilla JavaScript (ES 
 | Temperatur (prognose) | met.no Locationforecast + Subseasonal |
 | Grafer | ECharts (CDN) |
 | Styling | Tailwind CSS (CDN) |
-| Cron | GitHub Actions |
+| Cron | cron-job.org (ekstern) |
 
 ## Oppsett
 
@@ -138,13 +138,17 @@ CRON_SECRET            # Hemmelig nøkkel for å sikre collect-endepunktet
 FROST_CLIENT_ID        # Fra frost.met.no
 ```
 
-### 7. GitHub Actions
+### 7. Cron (cron-job.org)
 
-Sett opp repository secrets/variables:
-- **Secret**: `CRON_SECRET` – samme verdi som i Vercel
-- **Variable**: `COLLECT_URL` – `https://din-app.vercel.app/api/collect`
+Datainnsamlingen drives av en ekstern cron-tjeneste, [cron-job.org](https://cron-job.org) (gratis). GitHub Actions brukes ikke – planlagte workflows struper sub-timesintervaller ned mot ~hver time, og er uansett unødvendig her siden cron-job.org gjør jobben.
 
-Workflowen (`collect.yml`) har en ekstra `keepalive`-jobb som re-aktiverer seg selv via `gh workflow enable` hver kjøring. GitHub deaktiverer ellers planlagte (cron) workflows etter 60 dager uten repo-aktivitet (commits) – keepalive-jobben hindrer dette uten tredjepartskode eller tomme commits. Krever ingen ekstra konfigurasjon.
+Opprett en jobb:
+- **URL**: `https://din-app.vercel.app/api/collect`
+- **Metode**: `POST` (under Advanced settings)
+- **Header**: `x-cron-secret: <samme verdi som CRON_SECRET i Vercel>`
+- **Schedule**: hver time
+
+Collect-endepunktet henter de siste 72 timene fra Tibber, så et tapt kjøretidspunkt etterfylles automatisk neste gang.
 
 ### 8. Deploy
 
@@ -168,4 +172,4 @@ curl -X POST "https://din-app.vercel.app/api/collect?hours=100000&home=<TIBBER_H
 
 ## Vibe-kodet
 
-Dette prosjektet er nær 100 % vibe-kodet med [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Alt av kode -- frontend, backend, databehandling, grafer og GitHub Actions-oppsett -- er skrevet av Claude gjennom naturlig dialog på norsk. Det eneste som er gjort manuelt er opprettelse av kontoer hos de ulike tjenestene og konfigurasjon av API-nøkler.
+Dette prosjektet er nær 100 % vibe-kodet med [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Alt av kode -- frontend, backend, databehandling, grafer og cron-oppsett -- er skrevet av Claude gjennom naturlig dialog på norsk. Det eneste som er gjort manuelt er opprettelse av kontoer hos de ulike tjenestene og konfigurasjon av API-nøkler.

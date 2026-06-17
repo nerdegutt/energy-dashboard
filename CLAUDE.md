@@ -25,7 +25,7 @@ Personlig strømforbruk-dashboard som henter timedata fra Tibber API, lagrer i S
 ## Arkitektur
 
 ```
-GitHub Actions (cron, :15 hver time)
+cron-job.org (ekstern cron, hver time)
     ↓
 /api/collect.js (Vercel serverless function, CommonJS)
     ↓ henter siste 24t fra Tibber GraphQL API (upsert, selvhelende)
@@ -54,9 +54,6 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 │       └── charts.js        # Alle 10 ECharts-konfigurasjoner og rendering
 ├── package.json             # Avhengighet: @supabase/supabase-js
 ├── vercel.json              # Vercel-konfigurasjon (maxDuration: 60 for collect, 10 for forecast)
-├── .github/
-│   └── workflows/
-│       └── collect.yml      # GitHub Actions cron-trigger
 ├── .env.example             # Template for environment variables
 └── CLAUDE.md
 ```
@@ -70,7 +67,7 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 - **Temperatur**: Frost API (met.no, stasjon SN17280)
 - **Grafer**: ECharts (via CDN)
 - **Styling**: Tailwind CSS (via CDN)
-- **Cron**: GitHub Actions (kjører :15 over hver time)
+- **Cron**: cron-job.org (ekstern, hver time)
 - **Ingen build step, ingen bundler, ingen React/Next.js**
 
 ## Supabase
@@ -128,10 +125,13 @@ FROST_CLIENT_ID=            # Fra frost.met.no
 
 - Home IDs konfigureres i `homes`-tabellen i Supabase, ikke som env var
 
-### GitHub Actions (Settings → Secrets and variables → Actions)
+### Cron (cron-job.org)
 
-- **Repository secret**: `CRON_SECRET` – samme verdi som i Vercel
-- **Repository variable**: `COLLECT_URL` – `https://energy-dashboard-tan.vercel.app/api/collect`
+Ekstern cron-jobb som POSTer til collect-endepunktet:
+- **URL**: `https://energy-dashboard-tan.vercel.app/api/collect`
+- **Metode**: `POST`
+- **Header**: `x-cron-secret` = samme verdi som `CRON_SECRET` i Vercel
+- **Schedule**: hver time
 
 ## /api/collect.js
 
@@ -179,34 +179,9 @@ FROST_CLIENT_ID=            # Fra frost.met.no
 - HTTP-cache: `Cache-Control: public, s-maxage=3600, max-age=0` – CDN cacher i 1t, nettleseren revaliderer alltid (unngår stale data ved kodeendringer)
 - Vercel maxDuration: 10s
 
-## GitHub Actions Workflow
+## Cron (cron-job.org)
 
-```yaml
-name: Collect energy data
-on:
-  schedule:
-    - cron: '15 * * * *'
-  workflow_dispatch:
-jobs:
-  collect:
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          curl -f -X POST ${{ vars.COLLECT_URL }} \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
-
-  # Re-aktiverer workflowen hver kjøring så GitHub ikke deaktiverer den
-  # etter 60 dager uten repo-aktivitet. Ingen tredjepartskode, ingen commits.
-  keepalive:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - run: gh workflow enable collect.yml
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-```
+Datainnsamlingen trigges av en ekstern cron-tjeneste ([cron-job.org](https://cron-job.org)) som POSTer til collect-endepunktet hver time med `x-cron-secret`-headeren. GitHub Actions brukes ikke – planlagte workflows struper sub-timesintervaller mot ~hver time. collect henter uansett siste 72t, så tapte kjøringer etterfylles automatisk neste gang.
 
 ## Frontend
 
@@ -393,9 +368,9 @@ curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000&h
 - Frost API bruker Basic auth (client_id som brukernavn, tomt passord) og krever User-Agent header
 - Supabase anon key er trygg å eksponere i frontend – sikkerhet styres av RLS
 - Supabase service key brukes KUN i `api/collect.js`, aldri i frontend
-- Vercel free tier (Hobby) er tilstrekkelig – cron håndteres av GitHub Actions
+- Vercel free tier (Hobby) er tilstrekkelig – cron håndteres av cron-job.org (ekstern)
 - Supabase free tier holder i årevis med denne datamengden (~8760 rader/år per hjem)
-- GitHub Actions cron er ikke presis (5-15 min forsinkelse), men irrelevant for timedata
+- cron-job.org kjører hver time; collect henter uansett siste 72t, så tapte/forsinkede kjøringer etterfylles automatisk
 - `vercel dev` leser `.env.local` (ikke `.env`) – bruk `vercel env pull` eller opprett manuelt
 - Collect lagrer rader med null consumption (Tibber returnerer null for nylige timer) – temperaturdata bevares
 - Tibber-data kan ha hull (manglende timer) for inneværende dag pga forsinkelser – prognosefunksjoner fyller hull med modellprediksjoner time-for-time
