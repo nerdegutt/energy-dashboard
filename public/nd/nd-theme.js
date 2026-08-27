@@ -1,4 +1,4 @@
-// Nerdesign v1.0.1 – optional light/dark/auto toggle. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again.
+// Nerdesign v1.0.3 – optional light/dark/auto toggle. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again.
 // Optional theme toggle: auto / light / dark. Sets data-theme on <html>,
 // remembers the choice in localStorage ("nd-theme") and dispatches an
 // `nd:theme` CustomEvent (detail: { theme, resolved }) that nd-echarts.js listens to.

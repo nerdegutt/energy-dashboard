@@ -1,4 +1,4 @@
-// Nerdesign v1.0.1 – ECharts theme and option helpers that read nd tokens at runtime. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again.
+// Nerdesign v1.0.3 – ECharts theme and option helpers that read nd tokens at runtime. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again.
 // Nerdesign × ECharts. ES module, no dependencies. Pass your `echarts` instance
 // in – this file never binds to a CDN global. Everything reads the nd- tokens
 // from the live page, so charts follow light/dark automatically.

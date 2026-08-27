@@ -1,4 +1,4 @@
-/* Nerdesign v1.0.1 – tokens, base styles and components. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again. */
+/* Nerdesign v1.0.3 – tokens, base styles and components. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again. */
 
 /* ===== tokens/primitives.css ===== */
 /* Layer 1 – primitive palette. Material names from the farm, with lightness
@@ -18,9 +18,18 @@
   --nd-earth-800: #342c25;
   --nd-earth-900: #2b2620;
   --nd-earth-950: #1d1713;
+  /* ink – neutral surfaces for the dark theme */
+  --nd-ink-100: #e9ebee;
+  --nd-ink-300: #a4a8ad;
+  --nd-ink-700: #2c3033;
+  --nd-ink-800: #1c1f22;
+  --nd-ink-850: #17191c;
+  --nd-ink-900: #151719;
+  --nd-ink-950: #0b0c0e;
   /* brick – the one accent */
-  --nd-brick-300: #e0907b;
-  --nd-brick-400: #d57358;
+  --nd-brick-300: #e9a184;
+  --nd-brick-350: #e08a6a;
+  --nd-brick-400: #d9724f;
   --nd-brick-500: #c4685a;
   --nd-brick-600: #8e3b2f;
   --nd-brick-700: #6e2c23;
@@ -29,13 +38,13 @@
   --nd-olive-400: #778a2d;  --nd-olive-600: #4c5a01;
   --nd-sea-400: #249c74;    --nd-sea-600: #008a63;
   --nd-teal-400: #03a1b5;   --nd-teal-600: #0897a9;
-  --nd-slate-400: #5d94da;  --nd-slate-600: #3d73b6;
+  --nd-slate-400: #6d9fe8;  --nd-slate-600: #3d73b6;
   --nd-plum-400: #987aca;   --nd-plum-600: #5d408a;
   --nd-rose-400: #bc6a9a;   --nd-rose-600: #823564;
   /* status hues */
-  --nd-green-400: #5fae7a;  --nd-green-600: #2e7d4a;
-  --nd-amber-400: #d09a2b;  --nd-amber-600: #8a5f00;
-  --nd-red-400: #e57368;    --nd-red-600: #b3261e;
+  --nd-green-400: #5cbe84;  --nd-green-600: #2e7d4a;
+  --nd-amber-400: #d9a53a;  --nd-amber-600: #8a5f00;
+  --nd-red-400: #ea7a6e;    --nd-red-600: #b3261e;
 }
 
 /* ===== tokens/semantic.css ===== */
@@ -143,98 +152,102 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     /* -- tokens/data.dark.css -- */
-    /* Dark data tokens – DECLARATIONS ONLY. Same hue order, stepped for the dark surface (worst adjacent CVD ΔE 10.1). */
-    --nd-series-1: #c06557;
-    --nd-series-2: #03a1b5;
-    --nd-series-3: #a67110;
-    --nd-series-4: #5d94da;
-    --nd-series-5: #bc6a9a;
-    --nd-series-6: #778a2d;
-    --nd-series-7: #987aca;
-    --nd-series-8: #249c74;
-    --nd-seq-100: #86463c;
-    --nd-seq-200: #a1574b;
-    --nd-seq-300: #bc685b;
-    --nd-seq-400: #d87a6b;
-    --nd-seq-500: #eb9384;
-    --nd-seq-600: #f9aea2;
-    --nd-seq-700: #fdcac0;
-    --nd-div-neg: #d57358;
-    --nd-div-mid: #6a625a;
-    --nd-div-pos: #5d94da;
+    /* Dark data tokens – DECLARATIONS ONLY. Eight distinct hues stepped for the
+       dark tile (validated), and a single-hue cool ramp for magnitude. */
+    --nd-series-1: #028a9b;
+    --nd-series-2: #a278e4;
+    --nd-series-3: #d95c4b;
+    --nd-series-4: #408dea;
+    --nd-series-5: #05ac7d;
+    --nd-series-6: #a46e01;
+    --nd-series-7: #cd5ea2;
+    --nd-series-8: #879f03;
+    --nd-seq-100: #015259;
+    --nd-seq-200: #046972;
+    --nd-seq-300: #13808a;
+    --nd-seq-400: #3597a1;
+    --nd-seq-500: #50afb9;
+    --nd-seq-600: #7fc3cb;
+    --nd-seq-700: #96dce4;
+    --nd-div-neg: #d95c4b;
+    --nd-div-mid: #4a4f54;
+    --nd-div-pos: #408dea;
     /* -- tokens/semantic.dark.css -- */
-    /* Dark theme (direction A «Linolje») – DECLARATIONS ONLY. */
-    --nd-bg: var(--nd-earth-950);
-    --nd-surface: var(--nd-earth-900);
-    --nd-surface-raised: var(--nd-earth-800);
-    --nd-line: var(--nd-earth-700);
-    --nd-line-faint: #2f2823;
-    --nd-text: var(--nd-cream-100);
-    --nd-text-muted: var(--nd-earth-300);
-    --nd-text-inverse: var(--nd-earth-950);
-    --nd-text-empty: var(--nd-earth-700);
+    /* Dark theme – DECLARATIONS ONLY. Dark tiles on a slightly lighter page, so
+       charts sit on the darkest surface and read as the content. */
+    --nd-bg: var(--nd-ink-900);
+    --nd-surface: var(--nd-ink-950);
+    --nd-surface-raised: var(--nd-ink-800);
+    --nd-line: var(--nd-ink-700);
+    --nd-line-faint: var(--nd-ink-850);
+    --nd-text: var(--nd-ink-100);
+    --nd-text-muted: var(--nd-ink-300);
+    --nd-text-inverse: var(--nd-ink-950);
+    --nd-text-empty: var(--nd-ink-700);
     --nd-accent: var(--nd-brick-400);
-    --nd-accent-text: var(--nd-brick-400);
+    --nd-accent-text: var(--nd-brick-350);
     --nd-link: var(--nd-brick-300);
     --nd-focus: var(--nd-brick-300);
     --nd-ok: var(--nd-green-400);
     --nd-warn: var(--nd-amber-400);
     --nd-error: var(--nd-red-400);
     --nd-info: var(--nd-slate-400);
-    --nd-chart-text: var(--nd-earth-300);
-    --nd-chart-axis: var(--nd-earth-700);
-    --nd-chart-grid: var(--nd-line-faint);
-    --nd-chart-tooltip-bg: var(--nd-earth-800);
-    --nd-chart-tooltip-line: var(--nd-earth-700);
-    --nd-shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --nd-chart-text: var(--nd-ink-300);
+    --nd-chart-axis: var(--nd-ink-700);
+    --nd-chart-grid: var(--nd-ink-850);
+    --nd-chart-tooltip-bg: var(--nd-ink-800);
+    --nd-chart-tooltip-line: var(--nd-ink-700);
+    --nd-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.45);
   }
 }
 :root[data-theme="dark"] {
     /* -- tokens/data.dark.css -- */
-    /* Dark data tokens – DECLARATIONS ONLY. Same hue order, stepped for the dark surface (worst adjacent CVD ΔE 10.1). */
-    --nd-series-1: #c06557;
-    --nd-series-2: #03a1b5;
-    --nd-series-3: #a67110;
-    --nd-series-4: #5d94da;
-    --nd-series-5: #bc6a9a;
-    --nd-series-6: #778a2d;
-    --nd-series-7: #987aca;
-    --nd-series-8: #249c74;
-    --nd-seq-100: #86463c;
-    --nd-seq-200: #a1574b;
-    --nd-seq-300: #bc685b;
-    --nd-seq-400: #d87a6b;
-    --nd-seq-500: #eb9384;
-    --nd-seq-600: #f9aea2;
-    --nd-seq-700: #fdcac0;
-    --nd-div-neg: #d57358;
-    --nd-div-mid: #6a625a;
-    --nd-div-pos: #5d94da;
+    /* Dark data tokens – DECLARATIONS ONLY. Eight distinct hues stepped for the
+       dark tile (validated), and a single-hue cool ramp for magnitude. */
+    --nd-series-1: #028a9b;
+    --nd-series-2: #a278e4;
+    --nd-series-3: #d95c4b;
+    --nd-series-4: #408dea;
+    --nd-series-5: #05ac7d;
+    --nd-series-6: #a46e01;
+    --nd-series-7: #cd5ea2;
+    --nd-series-8: #879f03;
+    --nd-seq-100: #015259;
+    --nd-seq-200: #046972;
+    --nd-seq-300: #13808a;
+    --nd-seq-400: #3597a1;
+    --nd-seq-500: #50afb9;
+    --nd-seq-600: #7fc3cb;
+    --nd-seq-700: #96dce4;
+    --nd-div-neg: #d95c4b;
+    --nd-div-mid: #4a4f54;
+    --nd-div-pos: #408dea;
     /* -- tokens/semantic.dark.css -- */
-    /* Dark theme (direction A «Linolje») – DECLARATIONS ONLY. */
-    --nd-bg: var(--nd-earth-950);
-    --nd-surface: var(--nd-earth-900);
-    --nd-surface-raised: var(--nd-earth-800);
-    --nd-line: var(--nd-earth-700);
-    --nd-line-faint: #2f2823;
-    --nd-text: var(--nd-cream-100);
-    --nd-text-muted: var(--nd-earth-300);
-    --nd-text-inverse: var(--nd-earth-950);
-    --nd-text-empty: var(--nd-earth-700);
+    /* Dark theme – DECLARATIONS ONLY. Dark tiles on a slightly lighter page, so
+       charts sit on the darkest surface and read as the content. */
+    --nd-bg: var(--nd-ink-900);
+    --nd-surface: var(--nd-ink-950);
+    --nd-surface-raised: var(--nd-ink-800);
+    --nd-line: var(--nd-ink-700);
+    --nd-line-faint: var(--nd-ink-850);
+    --nd-text: var(--nd-ink-100);
+    --nd-text-muted: var(--nd-ink-300);
+    --nd-text-inverse: var(--nd-ink-950);
+    --nd-text-empty: var(--nd-ink-700);
     --nd-accent: var(--nd-brick-400);
-    --nd-accent-text: var(--nd-brick-400);
+    --nd-accent-text: var(--nd-brick-350);
     --nd-link: var(--nd-brick-300);
     --nd-focus: var(--nd-brick-300);
     --nd-ok: var(--nd-green-400);
     --nd-warn: var(--nd-amber-400);
     --nd-error: var(--nd-red-400);
     --nd-info: var(--nd-slate-400);
-    --nd-chart-text: var(--nd-earth-300);
-    --nd-chart-axis: var(--nd-earth-700);
-    --nd-chart-grid: var(--nd-line-faint);
-    --nd-chart-tooltip-bg: var(--nd-earth-800);
-    --nd-chart-tooltip-line: var(--nd-earth-700);
-    --nd-shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --nd-chart-text: var(--nd-ink-300);
+    --nd-chart-axis: var(--nd-ink-700);
+    --nd-chart-grid: var(--nd-ink-850);
+    --nd-chart-tooltip-bg: var(--nd-ink-800);
+    --nd-chart-tooltip-line: var(--nd-ink-700);
+    --nd-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 /* ===== paper (generated from the light tokens) =====
@@ -324,6 +337,8 @@ body {
   line-height: var(--nd-leading);
 }
 img, svg, video, canvas { max-width: 100%; height: auto; display: block; }
+/* the hidden attribute must win over any display rule a page adds */
+[hidden] { display: none !important; }
 button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ===== base/typography.css ===== */

@@ -15,9 +15,10 @@
     #login-screen .nd-panel { width: 100%; max-width: 24rem; }
     #login-screen h1 { font-size: var(--nd-size-xl); text-align: center; margin-bottom: var(--nd-space-5); }
     .centered { text-align: center; padding: var(--nd-space-8) 0; }
+    .loading-note { text-align: center; color: var(--nd-text-muted); margin: 0 0 var(--nd-space-4); }
     /* gauge sits beside the line chart on wide screens */
-    .row-gauge { display: grid; grid-template-columns: 1fr; gap: var(--nd-space-4); }
-    @media (min-width: 1024px) { .row-gauge { grid-template-columns: 260px 1fr; } }
+    .row-gauge { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--nd-space-4); }
+    @media (max-width: 800px) { .row-gauge { grid-template-columns: 1fr; } }
     #gauge-chart { --nd-chart-height: 220px; }
     #gauge-stats { text-align: center; font-size: var(--nd-size-sm); color: var(--nd-text-muted); font-family: var(--nd-font-numeric); }
     #regression-formulas { display: flex; flex-wrap: wrap; gap: var(--nd-space-4); font-size: var(--nd-size-xs); font-family: var(--nd-font-numeric); color: var(--nd-text); }
@@ -66,7 +67,7 @@
       </nav>
     </header>
 
-    <p id="loading" class="centered nd-muted" role="status" aria-live="polite">Henter data …</p>
+    <p id="loading" class="nd-panel loading-note" role="status" aria-live="polite">Henter data …</p>
     <p id="empty-state" class="centered nd-muted" role="status" aria-live="polite" hidden>
       Ingen data ennå. Kjør collect-endepunktet for å hente strømdata.
     </p>

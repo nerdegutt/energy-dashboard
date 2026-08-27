@@ -1,4 +1,4 @@
-// Nerdesign v1.0.1 – PhotoSwipe lightbox for every image; expects ./vendor/photoswipe/. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again.
+// Nerdesign v1.0.3 – PhotoSwipe lightbox for every image; expects ./vendor/photoswipe/. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again.
 // Nerdesign lightbox: every image in a gallery, figure card, hero or two-column
 // block opens in PhotoSwipe (self-hosted, MIT) – no markup changes needed.
 //
