@@ -1,0 +1,19 @@
+/* Nerdesign v1.0.1 – self-hosted fonts; expects ./fonts/ next to this file. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again. */
+/* Self-hosted JetBrains Mono (SIL OFL 1.1, see fonts/LICENSE-JetBrainsMono-OFL.txt),
+   subset to latin + latin-extended (æøå) + common symbols. Used for numerals
+   and chart text via --nd-font-numeric. Ships separately from nd.css so
+   single-file documents can leave it out and fall back to the system mono. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-SemiBold.woff2") format("woff2");
+}

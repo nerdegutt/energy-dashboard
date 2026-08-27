@@ -64,7 +64,7 @@ Ingen build step, ingen bundler, ingen React. Bare HTML, vanilla JavaScript (ES 
 | Temperatur (historisk) | Frost API (met.no, konfigurerbar stasjon per hjem) |
 | Temperatur (prognose) | met.no Locationforecast + Subseasonal |
 | Grafer | ECharts (CDN) |
-| Styling | Tailwind CSS (CDN) |
+| Styling | Nerdesign CSS (CDN) |
 | Cron | cron-job.org (ekstern) |
 
 ## Oppsett
@@ -173,3 +173,9 @@ curl -X POST "https://din-app.vercel.app/api/collect?hours=100000&home=<TIBBER_H
 ## Vibe-kodet
 
 Dette prosjektet er nær 100 % vibe-kodet med [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Alt av kode -- frontend, backend, databehandling, grafer og cron-oppsett -- er skrevet av Claude gjennom naturlig dialog på norsk. Det eneste som er gjort manuelt er opprettelse av kontoer hos de ulike tjenestene og konfigurasjon av API-nøkler.
+
+## Lokal forhåndsvisning uten Vercel
+
+```bash
+node dev-server.mjs     # serverer public/ og /api/config fra .env / .env.local → http://localhost:3000
+```

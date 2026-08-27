@@ -183,162 +183,29 @@ Ekstern cron-jobb som POSTer til collect-endepunktet:
 
 Datainnsamlingen trigges av en ekstern cron-tjeneste ([cron-job.org](https://cron-job.org)) som POSTer til collect-endepunktet hver time med `x-cron-secret`-headeren. GitHub Actions brukes ikke – planlagte workflows struper sub-timesintervaller mot ~hver time. collect henter uansett siste 72t, så tapte kjøringer etterfylles automatisk neste gang.
 
-## Frontend
+## Design og tema – Nerdesign
 
-### Avhengigheter (CDN)
-- ECharts: `https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js`
-- Tailwind CSS: `https://cdn.tailwindcss.com`
-- Supabase JS: `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2`
-- Font: JetBrains Mono fra Google Fonts
+UI-en bruker designsystemet **Nerdesign** (https://offline.no/nerdesign/), kopiert
+inn i `public/nd/` fra en fast release (versjonslinjen står øverst i `nd/nd.css`).
+Ikke rediger `nd/`; oppgrader med
+`~/dev/nerdegutt/nerdesign-private/tools/copy-to.sh public --with-fonts --release vX.Y.Z`.
+Bruk Claude-skillen `nerdesign` for tokens og markup.
 
-### Auth-flyt
-1. Initialiser Supabase-klient med hardkodede `SUPABASE_URL` og `SUPABASE_ANON_KEY` i `auth.js`
-2. Sjekk `supabase.auth.getSession()`
-3. Hvis ikke innlogget: vis login-skjerm med e-post/passord
-4. Kaller `supabase.auth.signInWithPassword()`
-5. Etter innlogging: hent data direkte fra Supabase via JS-klienten
-
-### Data-henting og cache
-- Frontend spør Supabase direkte (ingen `/api/data.js`-rute)
-- Paginerer i batches à 1000 rader (Supabase default-limit)
-- **localStorage-cache** med 1 times TTL per hjem og periode (nøkkel: `energy_v3_<homeId>_<days>`)
-- **Kompakt cache-format**: rader lagres som `[YYYYMMDDHH, kwh, temp]`-arrays – ~3.5× mindre enn fulle objekter
-- Kun per-hjem-data caches – "Alle" bygges fra per-hjem-cacher via `mergeHomes()` (tar <1 ms)
-- Cache-versjon bumpes (`v2` → `v3` osv.) ved formatendringer – gamle oppføringer ryddes automatisk
-- **"Alle"-modus**: henter hvert hjem i parallell (`Promise.all`), deretter `mergeHomes()` som summerer `consumption_kwh` per timestamp og beholder første `outside_temp_c`
-- Refresh-knapp tømmer cache og henter ferske data
-- **Manglende timer fylles inn** med null-verdier (`fillMissingHours`) for komplett tidsrekke
-- Alle beregninger (snitt, heatmap, weekday) filtrerer bort null-verdier
-
-### URL-state
-- Valgt hjem og periode persisteres i URL query params (`?home=<id>&days=<n>`)
-- Default (første hjem, 24t) gir ren URL uten params. "Alle" og andre hjem gir `?home=all` / `?home=<id>`
-- `history.replaceState` brukes for å unngå å forurense nettleserhistorikken
-
-### Periodevelger og aggregering
-- **24t**: Timedata, x-akse viser klokkeslett (hver 3. time), ingen rullende snitt
-- **7d**: Timedata, x-akse viser datoer (hver dag), 24t rullende snitt
-- **28d**: Timedata, x-akse viser datoer (hver mandag), 24t rullende snitt
-- **1y**: Daglige snitt (aggregert client-side), x-akse viser "mnd år" (1. i hver mnd), 7d rullende snitt
-
-### Grafer
-
-**Alle perioder:**
-- **Gauge**: Snitt for valgt periode (dynamisk label). I 24t-visning vises avvik fra forventet (sesongmodell)
-- **Linjegraf** (dual-axis): Forbruk + rullende snitt (skjult i 24t-modus) + temperatur
-- **Kumulativ strømstøtte** (kun individuelle hjem): Kumulativt forbruk denne måneden med prognose mot 5000 kWh-grensen. Viser faktisk (hel linje), prognose (stiplet), usikkerhetsbånd (p10/p90), og daglig forbruk som søyler. Tooltip bruker kontekstuelle labels: «Dagsforbruk»/«Månedsforbruk» for fortid, «Dagsforbruk (prognose)»/«Månedsforbruk (prognose)» for i dag og fremtid. For dagens dato skjules «Månedsforbruk» (identisk med prognose)
-- **Forbruksprognose** (7d + 21d): 7 dager tilbake med faktisk forbruk + 21 dager fremover med forbruksprognose. Dual-axis med temperatur. Usikkerhetsbånd for både forbruk og temperatur. Bruker timedata fra Locationforecast (kort horisont) og daglige snitt fra Subseasonal (lang horisont). For dagens dato viser tooltip kun prognoseverdier (målt og prognose er blandet og dermed like)
-- **År-over-år sammenligning**: Alltid fullt år, 28d rullende snitt, sammenligner med nøyaktig 1 år tilbake (håndterer skuddår via `setFullYear`). Rød fyll mellom linjene der siste år > forrige periode, grønn fyll der siste år < forrige periode. Tooltip viser prosentvis differanse. Legend: "Siste år" (cyan) og "Forrige periode" (lilla).
-- **Månedlig endring**: Prosentvis endring per måned vs. tilsvarende måned året før. Grønn = mindre, rød = mer. Labels over stolpene viser %-verdi. Tooltip: "x% mer/mindre enn året før".
-- **Månedlig totalforbruk**: Gruppert stolpediagram som viser totalt forbruk per måned (jan–des), med én stolpe per tilgjengelig år. Henter data separat fra 1. januar `currentYear-2` (maks 2 hele foregående år + inneværende). Første ufullstendige måned skippes automatisk. Inneværende måned viser faktisk forbruk + projisert rest (transparent forlengelse) basert på `monthlyProjection`. Rød stiplet markLine på 5000 kWh (strømstøttegrense, kun individuelle hjem). Farger: oransje, lilla, cyan, grønn (syklisk). Tooltip viser faktisk + projisert total i parentes.
-
-**Kun årsvisning (365d):**
-- **Scatter**: Temperatur vs forbruk med lineær, kvadratisk og sesongregresjon. Viser vinter-kurve (jan, blå stiplet) og sommer-kurve (jul, grønn stiplet) fra sesongmodellen. R²-verdier for alle tre modeller + antall fjernede outliers. Akser: `onZero: false` for å tvinge aksene til grid-kanten (unngår at y-aksen tegnes ved 0°C), x-akse-label sentrert under grafen
-- **Heatmap**: Ukedag × klokketime
-- **Snitt per ukedag**: Bar chart man–søn
-
-### Datatabeller
-- Hver graf (unntatt gauge) har en "Vis datatabell"-knapp som toggler en HTML-tabell med grafens data
-- Tabellen er skjult som default, synlig for alle når den åpnes
-- `buildTable(chartId, headers, rows)` i `app.js` bygger tabellen og setter inn i `.chart-table`-containeren
-- Toggle via event delegation på `#charts-container` – oppdaterer `aria-expanded` og knappetekst
-- Tabellene populeres i `loadData()` etter graf-rendering med data fra samme kilde som grafen
-- Formatering: `DD.MM.YY HH:00` for timer, `DD.MM.YYYY` for dager, `.toFixed(2)` for kWh, `.toFixed(1)` for °C og %, `–` for null
-- CSS: sticky header, `tabular-nums`, scrollbar med `max-h-64`
-
-### Dashboard-layout
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  Strømforbruk  [▾ Alle] [24t 7d 28d 1y] [↻] [Logg ut]   │
-├──────────┬───────────────────────────────────────────────┤
-│  GAUGE   │  Linjegraf (dual-axis)                        │
-│  snitt   │  - Forbruk (cyan) + rullende snitt (lilla)    │
-│  periode │  - Temperatur (oransje, høyre y-akse)         │
-├──────────┴───────────────────────────────────────────────┤
-│  Kumulativt forbruk (strømstøtte) [kun individuelle hjem]│
-├──────────────────────────────────────────────────────────┤
-│  Forbruksprognose (7d + 21d)                             │
-├──────────────────────────────────────────────────────────┤
-│  Temperatur vs forbruk (scatter) [kun 1y]                │
-├──────────────────────────────────────────────────────────┤
-│  År-over-år sammenligning (28d rullende snitt)           │
-├──────────────────────────────────────────────────────────┤
-│  Månedlig endring vs. forrige år (bar chart)             │
-├──────────────────────────────────────────────────────────┤
-│  Månedlig totalforbruk per år (gruppert bar chart)        │
-├──────────────────────────────────────────────────────────┤
-│  Heatmap: ukedag × klokketime [kun 1y]                   │
-├──────────────────────────────────────────────────────────┤
-│  Snitt per ukedag (bar chart) [kun 1y]                   │
-└──────────────────────────────────────────────────────────┘
-```
-
-### Grafana-inspirert tema
-
-- Sidebakgrunn: `#0f0f23`
-- Paneler: `rgba(26, 26, 46, 0.8)` med `backdrop-filter: blur(8px)` og border `rgba(255,255,255,0.05)`
-- Tekstfarge: `#a0a0b0`
-- Font: `JetBrains Mono, monospace`
-- Grid-linjer: `rgba(255,255,255,0.05)`
-- Primærfarge (forbruk): `#22d3ee` (cyan)
-- Snitt-linje: `#a78bfa` (lilla)
-- Temperatur: `#f97316` (oransje)
-- **Chart-hjelpefunksjoner** i `charts.js`: `baseTextStyle()`, `baseAxisLine()`, `baseSplitLine()`, `baseTooltip(overrides)` – felles config som gjenbrukes av alle grafer. `baseTooltip` returnerer `confine`, `backgroundColor`, `borderColor` og `textStyle`, og tar imot overrides (typisk `trigger` og `formatter`)
-- **`hideOverlap: true`** på `axisLabel` i linje- og YoY-graf – ECharts skjuler automatisk overlappende labels på smale skjermer
-
-### Client-side beregninger (data.js)
-
-- **`packRows`/`unpackRows`**: Komprimerer rader til `[YYYYMMDDHH, kwh, temp]` for localStorage-cache
-- **`fetchSingleHome`**: Henter data for ett hjem med paginering, cacher resultatet
-- **`mergeHomes`**: Grupperer rader per timestamp, summerer `consumption_kwh`, beholder første `outside_temp_c` (brukes for "Alle"-visning)
-- **`fillMissingHours`**: Fyller inn manglende timer med null-verdier for komplett tidsrekke
-- **`rollingAverage`**: Sliding window (24 timer eller 7 dager), filtrerer null
-- **`dailyAverage`**: Aggregering per dato for årsvisning, filtrerer null
-- **`yearOverYear`**: Sammenligner siste år med 1 år tilbake (dato-for-dato via `setFullYear`), 14d sentrert rullende snitt (±7 dager), månedlig prosentvis endring. Skuddår: 29. feb matcher 1. mars i ikke-skuddår (JavaScript `setFullYear`-adferd), jevnes ut av rullende snitt
-- **`avgByWeekday`**: Grupper på `getDay()`, rekkefølge man–søn, filtrerer null
-- **`monthlyTotals`**: Grupperer forbruk per måned og år. Skipper første måned hvis data ikke starter på den 1. (ufullstendig). Returnerer `{ months, years, series }` for gruppert stolpediagram
-- **`heatmapData`**: Kryss av ukedag (man=0) × klokketime med snittverdi, filtrerer null
-
-### Regresjonsmodell og prognose (data.js)
-
-- **`dayOfYear(date)`**: Returnerer dag-i-året (1–366)
-- **`quadraticRegression(points)`**: Klassisk 2.grads regresjon `kWh = a + b·T + c·T²` via Cramers regel. Brukes fortsatt av scatter-chartet for den rene kvadratiske kurven
-- **`seasonalRegression(points)`**: Utvidet modell med Fourier-sesongtermer: `kWh = a + b·T + c·T² + d·sin(2π·doy/365) + e·cos(2π·doy/365)`. Bygger 5×5 normallikningssystem, løser med Gauss-eliminasjon (`solveLinearSystem`). Input: `[[temp, doy, kwh], ...]`
-- **`robustSeasonalRegression(points, madThreshold=3)`**: Wrapper rundt `seasonalRegression` med MAD-basert outlier-fjerning. Kjører regresjon → beregner residualer → MAD × 1.4826 → fjerner punkter > 3×MAD → kjører regresjon på nytt. Fjerner typisk 2–4% av punktene (elbil-lading). Returnerer `{a, b, c, d, e, removedCount}`
-- **`makePredictFn(coeffs)`**: Factory som returnerer `(temp, doy) => kWh`. Én kilde til sannhet for prediksjonsformelen. Håndterer både 3-koeff (legacy) og 5-koeff (sesong) format. Brukes av `consumptionDeviation`, `monthlyProjection` og `forecastTimeline`
-- **`consumptionDeviation(data, coeffs)`**: Beregner avvik mellom faktisk og forventet forbruk siste 24t. Bruker sesongmodell med doy for sesongkorrigert forventning
-- **`fetchForecast(lat, lon)`**: Henter temperaturprognose fra `/api/forecast` med `cache: 'no-cache'` (bypass nettleserens HTTP-cache), cacher i localStorage (1t TTL)
-- **`historicalDailyTemps(data)`**: Bygger lookup `MM-DD → snitttemperatur` fra historisk data. Brukes som fallback når prognose mangler
-- **`monthlyProjection(monthData, forecast, histTemps, coeffs)`**: Beregner kumulativt forbruk for inneværende måned med usikkerhetsbånd (p10/p90). Fallback-kjede for temperatur: timeprognose (≥20 datapunkter/dag) → dagsprognose (Subseasonal) → historisk snitt. Se «Datasammenblanding for dagens dato» nedenfor
-- **`forecastTimeline(recentData, forecast, histTemps, coeffs)`**: 7 dager tilbake + 21 dager fremover. Faktisk forbruk/temp for fortiden, predikert via sesongmodell for fremtiden. Bruker timedata kun for dager med ≥20 datapunkter (full timedekning); 6-timersdata (4 punkter/dag) faller til Subseasonal dagsprognose for å unngå temperaturspiker ved overgang mellom datakilder. **Overgangsdager** med delvis faktisk data blandes: `faktisk_kWh + predikert_resterende`, temperatur vektes tilsvarende. Se «Datasammenblanding for dagens dato» nedenfor
-
-### Datasammenblanding for dagens dato
-
-Tibber-data har typisk 1–3 timers forsinkelse, og kan ha hull (manglende timer) for inneværende dag. Begge prognosefunksjonene (`monthlyProjection` og `forecastTimeline`) bruker derfor en time-for-time-tilnærming for dagens dato:
-
-| Timer | Datakilde | Forklaring |
-|-------|-----------|------------|
-| Passerte timer med Tibber-data | Faktisk målt forbruk | Brukes direkte |
-| Passerte timer uten data (hull) | Sesongmodell | Tibber-forsinkelser eller manglende data |
-| Fremtidige timer | Sesongmodell + forecast-temp | Temperatur fra met.no Locationforecast |
-
-**Hvorfor hull-fylling er nødvendig**: Uten hull-fylling ville summen av «faktisk forbruk i dag» vært for lav (manglende timer = 0), og prognosen for resten av dagen ville startet fra feil grunnlinje. Ved å fylle hull med modellprediksjoner får vi en realistisk dagstotal uavhengig av Tibber-forsinkelser.
-
-**Temperatur for i dag**: Vektet snitt av faktisk målt temperatur (for passerte timer) og met.no-prognose (for gjenstående timer). Vekten er `antall_timer_med_temp / 24`.
-
-**Konsekvens for tooltip**: Siden dagens verdier er en blanding av målt og predikert, vises ikke separate «målt»-verdier i tooltip – de ville vært misvisende. Tooltip viser kun prognoseverdier for dagens dato i begge grafene.
-
-Sammenligning av tidsperioder i prognosegrafene:
-
-| Periode | Kumulativ graf | Prognosegraf |
-|---------|----------------|--------------|
-| Fortid (ferdig dag) | Faktisk forbruk, summert kumulativt | Faktisk dagsforbruk + målt temperatur |
-| I dag | Time-for-time: målt + hull-fylt + prognose | Samme tilnærming, begge linjer møtes |
-| Fremtid (kort, ≤3d) | Sesongmodell, timetemperaturer fra Locationforecast | Samme |
-| Fremtid (middels, 3–10d) | Sesongmodell, 6-timers → daglige temperaturer | Samme |
-| Fremtid (lang, 10–21d) | Sesongmodell, daglige snitt fra Subseasonal | Kun prognosegraf (kumulativ dekker kun inneværende måned) |
-| Fremtid (>21d) | Sesongmodell, historisk snitt-temperatur som fallback | Kun kumulativ (for resten av måneden) |
+- Ingen Tailwind, ingen Google Fonts: `nd/nd-fonts.css` (JetBrains Mono, selvhostet) + `nd/nd.css`.
+  ECharts og Supabase kommer fortsatt fra jsDelivr.
+- Lyst og mørkt følger systeminnstillingen eller bryteren i toppstripen (`nd-theme.js`).
+  Ved temabytte kjøres `loadData()` på nytt (ECharts binder tema ved `init`).
+- `charts.js` har ingen hardkodede farger: `syncTokens()` leser `--nd-*` fra siden og
+  setter CYAN/ORANGE/VIOLET/GREEN/RED/BLUE/TEAL, grid, akser og font. Den kalles fra
+  `getOrCreate()`, som alle renderne bruker.
+- Grafene ligger i `.nd-chart`-seksjoner med `.nd-chart-title`, `.nd-chart-canvas`
+  (`role="img"` i markupen) og `.nd-datatable`. ECharts' egen `title` er fjernet –
+  panelets overskrift navngir grafen.
+- Datatabellene bygges med `nd.buildDataTable` (tekst, ikke HTML) og styres av
+  `nd.wireDataTables()`. `nd.announce` erstatter den lokale live-regionen.
+- Synlighet styres med `hidden`-attributtet, ikke klasser.
+- Regresjonsformlene skriver tekst i tekstfargen med et lite fargemerke foran –
+  farget tekst gav for lav kontrast.
 
 ## Backfill (initial datainnhenting)
 

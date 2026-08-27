@@ -1,23 +1,52 @@
 import { quadraticRegression, dayOfYear } from './data.js';
 
-const CYAN = '#22d3ee';
-const ORANGE = '#f97316';
-const TEXT = '#a0a0b0';
-const GRID_LINE = 'rgba(255,255,255,0.05)';
-const AXIS_LINE = '#333';
-const FONT = 'JetBrains Mono, monospace';
+// Colours and fonts come from the Nerdesign tokens on the page, so the charts
+// follow light/dark. They are re-read in getOrCreate(), which every renderer
+// calls first, and after a theme change (app.js re-renders).
+import * as nd from '../nd/nd-echarts.js';
+
+let CYAN, ORANGE, TEXT, GRID_LINE, AXIS_LINE, FONT, VIOLET, GREEN, RED, BLUE, TEAL, SURFACE, SURFACE_RAISED, SEQUENTIAL;
+
+function syncTokens() {
+  const t = nd.readTokens();
+  CYAN = t.series[0];              // consumption / primary
+  ORANGE = t.series[1];            // temperature
+  VIOLET = t.series[2];            // rolling average
+  BLUE = t.series[3];              // winter regression
+  TEAL = t.series[5];              // extra series
+  GREEN = t.status.ok;             // below / reduced
+  RED = t.status.error;            // above / increased
+  TEXT = t.text;
+  GRID_LINE = t.grid;
+  AXIS_LINE = t.axis;
+  FONT = t.font;
+  SURFACE = t.surface;
+  SURFACE_RAISED = t.tooltipBg;
+  SEQUENTIAL = t.sequential;
+  echarts.registerTheme('nerdesign', nd.buildTheme(t));
+}
+syncTokens();
 const WEEKDAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
 const MONTHS_SHORT = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des'];
+
+// Fills use the series colour at reduced opacity, computed from the token.
+function alpha(hex, a) {
+  const h = String(hex).replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
 
 const instances = {};
 
 function getOrCreate(id) {
+  syncTokens();
   if (instances[id]) {
     instances[id].dispose();
   }
   const el = document.getElementById(id);
   if (!el.hasAttribute('role')) el.setAttribute('role', 'img');
-  const chart = echarts.init(el);
+  if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+  const chart = echarts.init(el, 'nerdesign');
   instances[id] = chart;
   return chart;
 }
@@ -37,7 +66,7 @@ function baseSplitLine() {
 function baseTooltip(overrides) {
   return {
     confine: true,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: SURFACE_RAISED,
     borderColor: '#333',
     textStyle: baseTextStyle(),
     ...overrides,
@@ -59,7 +88,7 @@ export function renderGauge(data, days, deviation) {
     ? `${Math.abs(deviation).toFixed(0)}% ${deviation < 0 ? 'under' : 'over'} forventet`
     : null;
   const deviationColor = deviation != null
-    ? (deviation < 0 ? '#22c55e' : '#ef4444')
+    ? (deviation < 0 ? GREEN : RED)
     : TEXT;
 
   chart.setOption({
@@ -90,7 +119,7 @@ export function renderGauge(data, days, deviation) {
         itemStyle: { color: CYAN },
       },
       axisLine: {
-        lineStyle: { width: 12, color: [[1, '#1a1a2e']] },
+        lineStyle: { width: 12, color: [[1, SURFACE_RAISED]] },
       },
       axisTick: { show: false },
       splitLine: { show: false },
@@ -147,7 +176,6 @@ export function renderLineChart(data, rollingAvg, days) {
   };
 
   chart.setOption({
-    title: { text: 'Forbruk og temperatur', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: 'Linjegraf som viser strømforbruk, rullende snitt og temperatur over tid' } },
     tooltip: baseTooltip({ trigger: 'axis', formatter: tooltipFormatter }),
     legend: {
@@ -155,7 +183,7 @@ export function renderLineChart(data, rollingAvg, days) {
       textStyle: baseTextStyle(),
       top: 20,
     },
-    grid: { left: 50, right: 50, top: 55, bottom: 30 },
+    grid: { left: 50, right: 50, top: 30, bottom: 30 },
     xAxis: {
       type: 'category',
       data: timestamps,
@@ -213,8 +241,8 @@ export function renderLineChart(data, rollingAvg, days) {
         lineStyle: { color: CYAN, width: 1.5 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(34, 211, 238, 0.25)' },
-            { offset: 1, color: 'rgba(34, 211, 238, 0)' },
+            { offset: 0, color: alpha(CYAN, 0.25) },
+            { offset: 1, color: 'transparent' },
           ]),
         },
       },
@@ -224,8 +252,8 @@ export function renderLineChart(data, rollingAvg, days) {
         data: rolling,
         smooth: true,
         symbol: 'none',
-        lineStyle: { color: '#a78bfa', width: 2 },
-        itemStyle: { color: '#a78bfa' },
+        lineStyle: { color: VIOLET, width: 2 },
+        itemStyle: { color: VIOLET },
       },
       {
         name: 'Temperatur',
@@ -234,8 +262,8 @@ export function renderLineChart(data, rollingAvg, days) {
         yAxisIndex: 1,
         smooth: true,
         symbol: 'none',
-        lineStyle: { color: '#f97316', width: 1, opacity: 0.5 },
-        itemStyle: { color: '#f97316' },
+        lineStyle: { color: ORANGE, width: 1, opacity: 0.5 },
+        itemStyle: { color: ORANGE },
       },
     ],
   });
@@ -335,11 +363,14 @@ export function renderScatterChart(data, seasonalCoeffs) {
   // Vis formler
   const formulaEl = document.getElementById('regression-formulas');
   if (formulaEl) {
+    // The text uses the text token; the colour is carried by a small key beside
+    // it (a coloured label would be data-weight ink and can fail contrast).
+    const key = (c) => `<i style="display:inline-block;width:14px;height:3px;border-radius:2px;background:${c};margin-right:6px;vertical-align:middle"></i>`;
     let html =
-      `<span style="color:#a78bfa">1. grad: kWh = ${lin.a.toFixed(4)} ${formatCoeff(lin.b)}T &nbsp; R² = ${r2Lin.toFixed(4)}</span>` +
-      `<span style="color:${ORANGE}">2. grad: kWh = ${quad.a.toFixed(4)} ${formatCoeff(quad.b)}T ${formatCoeff(quad.c)}T² &nbsp; R² = ${r2Quad.toFixed(4)}</span>`;
+      `<span>${key(VIOLET)}1. grad: kWh = ${lin.a.toFixed(4)} ${formatCoeff(lin.b)}T &nbsp; R² = ${r2Lin.toFixed(4)}</span>` +
+      `<span>${key(ORANGE)}2. grad: kWh = ${quad.a.toFixed(4)} ${formatCoeff(quad.b)}T ${formatCoeff(quad.c)}T² &nbsp; R² = ${r2Quad.toFixed(4)}</span>`;
     if (r2Seasonal != null) {
-      html += `<span style="color:#22c55e">Sesong: R² = ${r2Seasonal.toFixed(4)}`;
+      html += `<span>${key(GREEN)}Sesong: R² = ${r2Seasonal.toFixed(4)}`;
       if (seasonalCoeffs.removedCount > 0) {
         html += ` (${seasonalCoeffs.removedCount} outliers fjernet)`;
       }
@@ -362,8 +393,8 @@ export function renderScatterChart(data, seasonalCoeffs) {
       data: linLine,
       smooth: false,
       symbol: 'none',
-      lineStyle: { color: '#a78bfa', width: 2 },
-      itemStyle: { color: '#a78bfa' },
+      lineStyle: { color: VIOLET, width: 2 },
+      itemStyle: { color: VIOLET },
     },
     {
       name: '2. grad',
@@ -383,8 +414,8 @@ export function renderScatterChart(data, seasonalCoeffs) {
       data: winterLine,
       smooth: true,
       symbol: 'none',
-      lineStyle: { color: '#60a5fa', width: 2, type: 'dashed' },
-      itemStyle: { color: '#60a5fa' },
+      lineStyle: { color: BLUE, width: 2, type: 'dashed' },
+      itemStyle: { color: BLUE },
     });
   }
   if (summerLine.length > 0) {
@@ -394,13 +425,12 @@ export function renderScatterChart(data, seasonalCoeffs) {
       data: summerLine,
       smooth: true,
       symbol: 'none',
-      lineStyle: { color: '#22c55e', width: 2, type: 'dashed' },
-      itemStyle: { color: '#22c55e' },
+      lineStyle: { color: GREEN, width: 2, type: 'dashed' },
+      itemStyle: { color: GREEN },
     });
   }
 
   chart.setOption({
-    title: { text: 'Temperatur vs. forbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: `Punktdiagram med ${points.length} datapunkter. Lineær R²=${r2Lin.toFixed(3)}, kvadratisk R²=${r2Quad.toFixed(3)}${r2Seasonal != null ? `, sesong R²=${r2Seasonal.toFixed(3)}` : ''}` } },
     tooltip: baseTooltip({
       trigger: 'item',
@@ -414,7 +444,7 @@ export function renderScatterChart(data, seasonalCoeffs) {
       textStyle: baseTextStyle(),
       top: 20,
     },
-    grid: { left: 50, right: 30, top: 55, bottom: 40 },
+    grid: { left: 50, right: 30, top: 30, bottom: 40 },
     xAxis: {
       type: 'value',
       name: 'Temperatur (°C)',
@@ -451,7 +481,6 @@ export function renderYoyChart(yoyData) {
   };
 
   chart.setOption({
-    title: { text: 'År-over-år sammenligning', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: 'Sammenligning av strømforbruk siste år mot forrige periode med 28-dagers rullende snitt' } },
     tooltip: baseTooltip({
       trigger: 'axis',
@@ -475,7 +504,7 @@ export function renderYoyChart(yoyData) {
       textStyle: baseTextStyle(),
       top: 20,
     },
-    grid: { left: 50, right: 20, top: 55, bottom: 30 },
+    grid: { left: 50, right: 20, top: 30, bottom: 30 },
     xAxis: {
       type: 'category',
       data: yoyData.labels,
@@ -511,8 +540,8 @@ export function renderYoyChart(yoyData) {
         lineStyle: { color: CYAN, width: 2 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(34, 211, 238, 0.35)' },
-            { offset: 1, color: 'rgba(34, 211, 238, 0.03)' },
+            { offset: 0, color: alpha(CYAN, 0.35) },
+            { offset: 1, color: alpha(CYAN, 0.03) },
           ]),
         },
       },
@@ -522,8 +551,8 @@ export function renderYoyChart(yoyData) {
         data: yoyData.previous,
         smooth: true,
         symbol: 'none',
-        itemStyle: { color: '#a78bfa' },
-        lineStyle: { color: '#a78bfa', width: 2, opacity: 0.7 },
+        itemStyle: { color: VIOLET },
+        lineStyle: { color: VIOLET, width: 2, opacity: 0.7 },
       },
       {
         // Rød fyll mellom linjene der siste år > forrige periode
@@ -551,8 +580,8 @@ export function renderYoyChart(yoyData) {
           const diff1 = cur1 - prev1;
           const sameSign = (diff0 >= 0 && diff1 >= 0) || (diff0 <= 0 && diff1 <= 0);
           const fill = diff0 + diff1 > 0
-            ? 'rgba(239, 68, 68, 0.35)'   // rød: bruker mer
-            : 'rgba(34, 197, 94, 0.25)';  // grønn: bruker mindre
+            ? alpha(RED, 0.35)   // rød: bruker mer
+            : alpha(GREEN, 0.25);  // grønn: bruker mindre
 
           const polys = [];
           if (sameSign) {
@@ -568,13 +597,13 @@ export function renderYoyChart(yoyData) {
               pts: diff0 > 0
                 ? [pCur0, midPx, pPrev0]
                 : [pCur0, midPx, pPrev0],
-              fill: diff0 > 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.25)',
+              fill: diff0 > 0 ? alpha(RED, 0.35) : alpha(GREEN, 0.25),
             });
             polys.push({
               pts: diff1 > 0
                 ? [midPx, pCur1, pPrev1]
                 : [midPx, pCur1, pPrev1],
-              fill: diff1 > 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.25)',
+              fill: diff1 > 0 ? alpha(RED, 0.35) : alpha(GREEN, 0.25),
             });
           }
 
@@ -615,7 +644,6 @@ export function renderMonthlyChangeChart(monthlyChange) {
   const chart = getOrCreate('monthly-change-chart');
 
   chart.setOption({
-    title: { text: 'Månedlig endring vs. forrige år', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: 'Stolpediagram som viser prosentvis endring i strømforbruk per måned sammenlignet med året før' } },
     tooltip: baseTooltip({
       trigger: 'axis',
@@ -625,7 +653,7 @@ export function renderMonthlyChangeChart(monthlyChange) {
         return `${p.name}: ${Math.abs(p.value).toFixed(1)}% ${dir} enn året før`;
       },
     }),
-    grid: { left: 50, right: 20, top: 55, bottom: 30 },
+    grid: { left: 50, right: 20, top: 30, bottom: 30 },
     xAxis: {
       type: 'category',
       data: monthlyChange.map((d) => d.month),
@@ -650,12 +678,12 @@ export function renderMonthlyChangeChart(monthlyChange) {
         itemStyle: {
           color: d.pct <= 0
             ? new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: 'rgba(34, 197, 94, 0.8)' },
-                { offset: 1, color: 'rgba(34, 197, 94, 0.3)' },
+                { offset: 0, color: alpha(GREEN, 0.8) },
+                { offset: 1, color: alpha(GREEN, 0.3) },
               ])
             : new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: 'rgba(239, 68, 68, 0.8)' },
-                { offset: 1, color: 'rgba(239, 68, 68, 0.3)' },
+                { offset: 0, color: alpha(RED, 0.8) },
+                { offset: 1, color: alpha(RED, 0.3) },
               ]),
           borderRadius: d.pct <= 0 ? [0, 0, 3, 3] : [3, 3, 0, 0],
         },
@@ -701,13 +729,12 @@ export function renderCumulativeChart(projectionData) {
     value: v != null ? Math.round(v) : null,
     itemStyle: {
       color: i <= todayIdx
-        ? 'rgba(34, 211, 238, 0.15)'
-        : 'rgba(167, 139, 250, 0.15)',
+        ? alpha(CYAN, 0.15)
+        : alpha(VIOLET, 0.15),
     },
   }));
 
   chart.setOption({
-    title: { text: 'Strømstøtte: Kumulativt forbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: `Kumulativ graf over strømforbruk denne måneden. Prognose total: ${Math.round(projectionData.projectedTotal)} kWh. Grense: ${limit} kWh.` } },
     tooltip: baseTooltip({
       trigger: 'axis',
@@ -740,7 +767,7 @@ export function renderCumulativeChart(projectionData) {
       textStyle: baseTextStyle(),
       top: 20,
     },
-    grid: { left: 60, right: 50, top: 55, bottom: 40 },
+    grid: { left: 60, right: 50, top: 30, bottom: 40 },
     xAxis: {
       type: 'category',
       data: labels,
@@ -761,8 +788,8 @@ export function renderCumulativeChart(projectionData) {
         type: 'value',
         name: 'kWh/dag',
         nameTextStyle: baseTextStyle(),
-        axisLine: { lineStyle: { color: '#a78bfa' } },
-        axisLabel: { ...baseTextStyle(), color: '#a78bfa' },
+        axisLine: { lineStyle: { color: VIOLET } },
+        axisLabel: { ...baseTextStyle(), color: VIOLET },
         splitLine: { show: false },
       },
     ],
@@ -796,8 +823,8 @@ export function renderCumulativeChart(projectionData) {
         markLine: {
           silent: true,
           symbol: 'none',
-          lineStyle: { color: '#ef4444', width: 1.5, type: 'dashed' },
-          data: [{ yAxis: limit, label: { formatter: `${limit} kWh`, color: '#ef4444', fontFamily: FONT, fontSize: 10, position: 'insideEndTop' } }],
+          lineStyle: { color: RED, width: 1.5, type: 'dashed' },
+          data: [{ yAxis: limit, label: { formatter: `${limit} kWh`, color: RED, fontFamily: FONT, fontSize: 10, position: 'insideEndTop' } }],
         },
         z: 2,
       },
@@ -820,7 +847,7 @@ export function renderCumulativeChart(projectionData) {
         symbol: 'none',
         lineStyle: { opacity: 0 },
         stack: 'band',
-        areaStyle: { color: 'rgba(34, 211, 238, 0.18)' },
+        areaStyle: { color: alpha(CYAN, 0.18) },
         tooltip: { show: false },
       },
     ],
@@ -862,7 +889,6 @@ export function renderForecastChart(timelineData) {
   });
 
   chart.setOption({
-    title: { text: 'Forbruksprognose (7d + 21d)', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: 'Forbruksprognose: 7 dager tilbake med faktisk forbruk og 21 dager fremover med forbruksprognose basert på temperaturprognose' } },
     tooltip: baseTooltip({
       trigger: 'axis',
@@ -889,7 +915,7 @@ export function renderForecastChart(timelineData) {
       textStyle: baseTextStyle(),
       top: 20,
     },
-    grid: { left: 50, right: 50, top: 55, bottom: 40 },
+    grid: { left: 50, right: 50, top: 30, bottom: 40 },
     xAxis: {
       type: 'category',
       data: labels,
@@ -958,7 +984,7 @@ export function renderForecastChart(timelineData) {
         symbol: 'none',
         lineStyle: { opacity: 0 },
         stack: 'consBand',
-        areaStyle: { color: 'rgba(34, 211, 238, 0.1)' },
+        areaStyle: { color: alpha(CYAN, 0.1) },
         tooltip: { show: false },
       },
       // Actual temperature (offset)
@@ -1006,7 +1032,7 @@ export function renderForecastChart(timelineData) {
         symbol: 'none',
         lineStyle: { opacity: 0 },
         stack: 'tempBand',
-        areaStyle: { color: 'rgba(249, 115, 22, 0.12)' },
+        areaStyle: { color: alpha(ORANGE, 0.12) },
         tooltip: { show: false },
       },
     ],
@@ -1019,7 +1045,7 @@ export function renderForecastChart(timelineData) {
 export function renderMonthlyTotalChart({ months, years, series }, projectedTotal, showLimit) {
   const chart = getOrCreate('monthly-total-chart');
 
-  const YEAR_COLORS = ['#f97316', '#a78bfa', CYAN, '#34d399'];
+  const YEAR_COLORS = [ORANGE, VIOLET, CYAN, TEAL];
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -1049,8 +1075,8 @@ export function renderMonthlyTotalChart({ months, years, series }, projectedTota
       opts.markLine = {
         silent: true,
         symbol: 'none',
-        lineStyle: { color: '#ef4444', width: 1.5, type: 'dashed' },
-        data: [{ yAxis: 5000, label: { formatter: '5 000 kWh', color: '#ef4444', fontFamily: FONT, fontSize: 10, position: 'insideEndTop' } }],
+        lineStyle: { color: RED, width: 1.5, type: 'dashed' },
+        data: [{ yAxis: 5000, label: { formatter: '5 000 kWh', color: RED, fontFamily: FONT, fontSize: 10, position: 'insideEndTop' } }],
       };
     }
     if (hasProjection && i === currentYearIdx) opts.stack = 'current';
@@ -1078,7 +1104,6 @@ export function renderMonthlyTotalChart({ months, years, series }, projectedTota
   if (hasProjection && remainder > 0) legendData.push('Prognose');
 
   chart.setOption({
-    title: { text: 'Månedlig totalforbruk', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: 'Gruppert stolpediagram som viser totalt strømforbruk per måned, gruppert etter år' } },
     tooltip: baseTooltip({
       trigger: 'axis',
@@ -1101,7 +1126,7 @@ export function renderMonthlyTotalChart({ months, years, series }, projectedTota
       textStyle: baseTextStyle(),
       top: 20,
     },
-    grid: { left: 60, right: 20, top: 50, bottom: 30 },
+    grid: { left: 60, right: 20, top: 26, bottom: 30 },
     xAxis: {
       type: 'category',
       data: months,
@@ -1131,7 +1156,6 @@ export function renderHeatmap(heatmapData) {
   const maxVal = vals.length > 0 ? Math.max(...vals) : 0.1;
 
   chart.setOption({
-    title: { text: 'Forbruk: ukedag × klokketime', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: 'Varmekart som viser gjennomsnittlig strømforbruk fordelt på ukedag og klokketime' } },
     tooltip: baseTooltip({
       formatter: (p) => `${WEEKDAYS[p.value[1]]} ${hours[p.value[0]]}<br/>${p.value[2].toFixed(2)} kWh`,
@@ -1159,7 +1183,7 @@ export function renderHeatmap(heatmapData) {
       left: 'center',
       bottom: 0,
       inRange: {
-        color: ['#0f0f23', '#164e63', '#22d3ee'],
+        color: SEQUENTIAL,
       },
       textStyle: baseTextStyle(),
     },
@@ -1180,13 +1204,12 @@ export function renderWeekdayChart(weekdayData) {
   const chart = getOrCreate('weekday-chart');
 
   chart.setOption({
-    title: { text: 'Snitt per ukedag', textStyle: { color: TEXT, fontFamily: FONT, fontSize: 13 }, left: 'center', top: 0 },
     aria: { enabled: true, label: { description: 'Stolpediagram som viser gjennomsnittlig strømforbruk per ukedag, mandag til søndag' } },
     tooltip: baseTooltip({
       trigger: 'axis',
       formatter: (p) => `${p[0].name}: ${p[0].value.toFixed(2)} kWh`,
     }),
-    grid: { left: 50, right: 20, top: 45, bottom: 30 },
+    grid: { left: 50, right: 20, top: 24, bottom: 30 },
     xAxis: {
       type: 'category',
       data: weekdayData.map((d) => d.day),
@@ -1207,7 +1230,7 @@ export function renderWeekdayChart(weekdayData) {
       itemStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: CYAN },
-          { offset: 1, color: 'rgba(34, 211, 238, 0.3)' },
+          { offset: 1, color: alpha(CYAN, 0.3) },
         ]),
         borderRadius: [3, 3, 0, 0],
       },
