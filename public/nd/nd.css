@@ -1,0 +1,744 @@
+/* Nerdesign v1.0.3 – tokens, base styles and components. Copied from github.com/nerdegutt/nerdesign – do not edit here; change the source and copy again. */
+
+/* ===== tokens/primitives.css ===== */
+/* Layer 1 – primitive palette. Material names from the farm, with lightness
+   steps (higher = darker). Components never use these directly; semantic.css
+   maps them onto roles. Light values are the original document palette;
+   dark values come from direction A «Linolje» (checkpoint 1). */
+:root {
+  /* cream – paper and surfaces */
+  --nd-cream-0: #ffffff;
+  --nd-cream-50: #faf7f2;
+  --nd-cream-100: #f1e9dc;
+  --nd-cream-200: #e5ddd0;
+  /* earth – warm neutrals from muted text to the dark background */
+  --nd-earth-300: #b2a99d;
+  --nd-earth-500: #6f6659;
+  --nd-earth-700: #3e3631;
+  --nd-earth-800: #342c25;
+  --nd-earth-900: #2b2620;
+  --nd-earth-950: #1d1713;
+  /* ink – neutral surfaces for the dark theme */
+  --nd-ink-100: #e9ebee;
+  --nd-ink-300: #a4a8ad;
+  --nd-ink-700: #2c3033;
+  --nd-ink-800: #1c1f22;
+  --nd-ink-850: #17191c;
+  --nd-ink-900: #151719;
+  --nd-ink-950: #0b0c0e;
+  /* brick – the one accent */
+  --nd-brick-300: #e9a184;
+  --nd-brick-350: #e08a6a;
+  --nd-brick-400: #d9724f;
+  --nd-brick-500: #c4685a;
+  --nd-brick-600: #8e3b2f;
+  --nd-brick-700: #6e2c23;
+  /* series hues (light step 600 / dark step 400) */
+  --nd-ochre-400: #a67110;  --nd-ochre-600: #7e5403;
+  --nd-olive-400: #778a2d;  --nd-olive-600: #4c5a01;
+  --nd-sea-400: #249c74;    --nd-sea-600: #008a63;
+  --nd-teal-400: #03a1b5;   --nd-teal-600: #0897a9;
+  --nd-slate-400: #6d9fe8;  --nd-slate-600: #3d73b6;
+  --nd-plum-400: #987aca;   --nd-plum-600: #5d408a;
+  --nd-rose-400: #bc6a9a;   --nd-rose-600: #823564;
+  /* status hues */
+  --nd-green-400: #5cbe84;  --nd-green-600: #2e7d4a;
+  --nd-amber-400: #d9a53a;  --nd-amber-600: #8a5f00;
+  --nd-red-400: #ea7a6e;    --nd-red-600: #b3261e;
+}
+
+/* ===== tokens/semantic.css ===== */
+/* Layer 2 – semantic roles, light theme. Dark values live in semantic.dark.css
+   (declarations only; the build wraps them under both dark selectors).
+   Components use ONLY these. */
+:root {
+  color-scheme: light dark;
+
+  /* surfaces */
+  --nd-bg: var(--nd-cream-50);
+  --nd-surface: var(--nd-cream-0);
+  --nd-surface-raised: var(--nd-cream-0);
+  --nd-line: var(--nd-cream-200);
+  --nd-line-faint: #f0eae1;
+
+  /* text */
+  --nd-text: var(--nd-earth-900);
+  --nd-text-muted: var(--nd-earth-500);
+  --nd-text-inverse: var(--nd-cream-50);
+  --nd-text-empty: var(--nd-cream-200);   /* decorative dash for "no value" – pair with a text alternative */
+
+  /* accent */
+  --nd-accent: var(--nd-brick-600);
+  --nd-accent-text: var(--nd-brick-600);
+  --nd-link: var(--nd-brick-600);
+  --nd-focus: var(--nd-brick-600);
+
+  /* status – always paired with an icon or word, never colour alone */
+  --nd-ok: var(--nd-green-600);
+  --nd-warn: var(--nd-amber-600);
+  --nd-error: var(--nd-red-600);
+  --nd-info: var(--nd-slate-600);
+
+  /* chart chrome */
+  --nd-chart-text: var(--nd-earth-500);
+  --nd-chart-axis: var(--nd-cream-200);
+  --nd-chart-grid: var(--nd-line-faint);
+  --nd-chart-tooltip-bg: var(--nd-cream-0);
+  --nd-chart-tooltip-line: var(--nd-cream-200);
+
+  /* typography */
+  --nd-font-text: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --nd-font-numeric: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --nd-size-xs: 0.78rem;
+  --nd-size-sm: 0.9rem;
+  --nd-size-md: 1rem;
+  --nd-size-lg: 1.15rem;
+  --nd-size-xl: 1.5rem;
+  --nd-size-2xl: 2.2rem;
+  --nd-size-display: clamp(1.9rem, 4.5vw, 3rem);
+  --nd-leading: 1.6;
+  --nd-tracking-caps: 0.12em;
+  --nd-tracking-kicker: 0.22em;
+
+  /* shape and space */
+  --nd-radius: 6px;
+  --nd-radius-sm: 1px;
+  --nd-space-1: 0.25rem;
+  --nd-space-2: 0.5rem;
+  --nd-space-3: 0.75rem;
+  --nd-space-4: 1rem;
+  --nd-space-5: 1.5rem;
+  --nd-space-6: 2rem;
+  --nd-space-7: 3rem;
+  --nd-space-8: 4rem;
+  --nd-measure: 42em;
+  --nd-page-width: 960px;
+  --nd-shadow: 0 1px 0 rgba(43, 38, 32, 0.04), 0 8px 24px rgba(43, 38, 32, 0.08);
+}
+
+/* ===== tokens/data.css ===== */
+/* Data-visualisation tokens, light theme. Categorical series in FIXED order
+   (never cycled; a 9th series folds into «Annet»), a one-hue sequential ramp,
+   a diverging pair with a neutral midpoint. Validated with the dataviz palette
+   validator on the light surface (worst adjacent CVD ΔE 11.2). */
+:root {
+  --nd-series-1: var(--nd-brick-500);
+  --nd-series-2: var(--nd-olive-600);
+  --nd-series-3: var(--nd-plum-600);
+  --nd-series-4: var(--nd-sea-600);
+  --nd-series-5: var(--nd-rose-600);
+  --nd-series-6: var(--nd-teal-600);
+  --nd-series-7: var(--nd-ochre-600);
+  --nd-series-8: var(--nd-slate-600);
+
+  /* sequential – brick, light → dark */
+  --nd-seq-100: #de9589;
+  --nd-seq-200: #c87a6d;
+  --nd-seq-300: #b25f52;
+  --nd-seq-400: #9c4438;
+  --nd-seq-500: #7e3126;
+  --nd-seq-600: #652118;
+  --nd-seq-700: #49150f;
+
+  /* diverging – brick ↔ slate with a neutral midpoint */
+  --nd-div-neg: var(--nd-brick-600);
+  --nd-div-mid: #d6cfc4;
+  --nd-div-pos: var(--nd-slate-600);
+}
+
+/* ===== dark theme (generated from tokens/data.dark.css, tokens/semantic.dark.css) =====
+   Same declarations twice: the media query follows the OS unless the page
+   opted out with data-theme="light"; the attribute selector lets a toggle win. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* -- tokens/data.dark.css -- */
+    /* Dark data tokens – DECLARATIONS ONLY. Eight distinct hues stepped for the
+       dark tile (validated), and a single-hue cool ramp for magnitude. */
+    --nd-series-1: #028a9b;
+    --nd-series-2: #a278e4;
+    --nd-series-3: #d95c4b;
+    --nd-series-4: #408dea;
+    --nd-series-5: #05ac7d;
+    --nd-series-6: #a46e01;
+    --nd-series-7: #cd5ea2;
+    --nd-series-8: #879f03;
+    --nd-seq-100: #015259;
+    --nd-seq-200: #046972;
+    --nd-seq-300: #13808a;
+    --nd-seq-400: #3597a1;
+    --nd-seq-500: #50afb9;
+    --nd-seq-600: #7fc3cb;
+    --nd-seq-700: #96dce4;
+    --nd-div-neg: #d95c4b;
+    --nd-div-mid: #4a4f54;
+    --nd-div-pos: #408dea;
+    /* -- tokens/semantic.dark.css -- */
+    /* Dark theme – DECLARATIONS ONLY. Dark tiles on a slightly lighter page, so
+       charts sit on the darkest surface and read as the content. */
+    --nd-bg: var(--nd-ink-900);
+    --nd-surface: var(--nd-ink-950);
+    --nd-surface-raised: var(--nd-ink-800);
+    --nd-line: var(--nd-ink-700);
+    --nd-line-faint: var(--nd-ink-850);
+    --nd-text: var(--nd-ink-100);
+    --nd-text-muted: var(--nd-ink-300);
+    --nd-text-inverse: var(--nd-ink-950);
+    --nd-text-empty: var(--nd-ink-700);
+    --nd-accent: var(--nd-brick-400);
+    --nd-accent-text: var(--nd-brick-350);
+    --nd-link: var(--nd-brick-300);
+    --nd-focus: var(--nd-brick-300);
+    --nd-ok: var(--nd-green-400);
+    --nd-warn: var(--nd-amber-400);
+    --nd-error: var(--nd-red-400);
+    --nd-info: var(--nd-slate-400);
+    --nd-chart-text: var(--nd-ink-300);
+    --nd-chart-axis: var(--nd-ink-700);
+    --nd-chart-grid: var(--nd-ink-850);
+    --nd-chart-tooltip-bg: var(--nd-ink-800);
+    --nd-chart-tooltip-line: var(--nd-ink-700);
+    --nd-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+}
+:root[data-theme="dark"] {
+    /* -- tokens/data.dark.css -- */
+    /* Dark data tokens – DECLARATIONS ONLY. Eight distinct hues stepped for the
+       dark tile (validated), and a single-hue cool ramp for magnitude. */
+    --nd-series-1: #028a9b;
+    --nd-series-2: #a278e4;
+    --nd-series-3: #d95c4b;
+    --nd-series-4: #408dea;
+    --nd-series-5: #05ac7d;
+    --nd-series-6: #a46e01;
+    --nd-series-7: #cd5ea2;
+    --nd-series-8: #879f03;
+    --nd-seq-100: #015259;
+    --nd-seq-200: #046972;
+    --nd-seq-300: #13808a;
+    --nd-seq-400: #3597a1;
+    --nd-seq-500: #50afb9;
+    --nd-seq-600: #7fc3cb;
+    --nd-seq-700: #96dce4;
+    --nd-div-neg: #d95c4b;
+    --nd-div-mid: #4a4f54;
+    --nd-div-pos: #408dea;
+    /* -- tokens/semantic.dark.css -- */
+    /* Dark theme – DECLARATIONS ONLY. Dark tiles on a slightly lighter page, so
+       charts sit on the darkest surface and read as the content. */
+    --nd-bg: var(--nd-ink-900);
+    --nd-surface: var(--nd-ink-950);
+    --nd-surface-raised: var(--nd-ink-800);
+    --nd-line: var(--nd-ink-700);
+    --nd-line-faint: var(--nd-ink-850);
+    --nd-text: var(--nd-ink-100);
+    --nd-text-muted: var(--nd-ink-300);
+    --nd-text-inverse: var(--nd-ink-950);
+    --nd-text-empty: var(--nd-ink-700);
+    --nd-accent: var(--nd-brick-400);
+    --nd-accent-text: var(--nd-brick-350);
+    --nd-link: var(--nd-brick-300);
+    --nd-focus: var(--nd-brick-300);
+    --nd-ok: var(--nd-green-400);
+    --nd-warn: var(--nd-amber-400);
+    --nd-error: var(--nd-red-400);
+    --nd-info: var(--nd-slate-400);
+    --nd-chart-text: var(--nd-ink-300);
+    --nd-chart-axis: var(--nd-ink-700);
+    --nd-chart-grid: var(--nd-ink-850);
+    --nd-chart-tooltip-bg: var(--nd-ink-800);
+    --nd-chart-tooltip-line: var(--nd-ink-700);
+    --nd-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* ===== paper (generated from the light tokens) =====
+   Physical previews stay paper-white in dark mode. Add .nd-paper to anything
+   that represents a printed object. */
+.nd-paper, .nd-sheet--fixed, .nd-label-sheet {
+  color-scheme: light;
+  --nd-bg: var(--nd-cream-50);
+  --nd-surface: var(--nd-cream-0);
+  --nd-surface-raised: var(--nd-cream-0);
+  --nd-line: var(--nd-cream-200);
+  --nd-line-faint: #f0eae1;
+  --nd-text: var(--nd-earth-900);
+  --nd-text-muted: var(--nd-earth-500);
+  --nd-text-inverse: var(--nd-cream-50);
+  --nd-text-empty: var(--nd-cream-200);   /* decorative dash for "no value" – pair with a text alternative */
+  --nd-accent: var(--nd-brick-600);
+  --nd-accent-text: var(--nd-brick-600);
+  --nd-link: var(--nd-brick-600);
+  --nd-focus: var(--nd-brick-600);
+  --nd-ok: var(--nd-green-600);
+  --nd-warn: var(--nd-amber-600);
+  --nd-error: var(--nd-red-600);
+  --nd-info: var(--nd-slate-600);
+  --nd-chart-text: var(--nd-earth-500);
+  --nd-chart-axis: var(--nd-cream-200);
+  --nd-chart-grid: var(--nd-line-faint);
+  --nd-chart-tooltip-bg: var(--nd-cream-0);
+  --nd-chart-tooltip-line: var(--nd-cream-200);
+  --nd-font-text: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --nd-font-numeric: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --nd-size-xs: 0.78rem;
+  --nd-size-sm: 0.9rem;
+  --nd-size-md: 1rem;
+  --nd-size-lg: 1.15rem;
+  --nd-size-xl: 1.5rem;
+  --nd-size-2xl: 2.2rem;
+  --nd-size-display: clamp(1.9rem, 4.5vw, 3rem);
+  --nd-leading: 1.6;
+  --nd-tracking-caps: 0.12em;
+  --nd-tracking-kicker: 0.22em;
+  --nd-radius: 6px;
+  --nd-radius-sm: 1px;
+  --nd-space-1: 0.25rem;
+  --nd-space-2: 0.5rem;
+  --nd-space-3: 0.75rem;
+  --nd-space-4: 1rem;
+  --nd-space-5: 1.5rem;
+  --nd-space-6: 2rem;
+  --nd-space-7: 3rem;
+  --nd-space-8: 4rem;
+  --nd-measure: 42em;
+  --nd-page-width: 960px;
+  --nd-shadow: 0 1px 0 rgba(43, 38, 32, 0.04), 0 8px 24px rgba(43, 38, 32, 0.08);
+  --nd-series-1: var(--nd-brick-500);
+  --nd-series-2: var(--nd-olive-600);
+  --nd-series-3: var(--nd-plum-600);
+  --nd-series-4: var(--nd-sea-600);
+  --nd-series-5: var(--nd-rose-600);
+  --nd-series-6: var(--nd-teal-600);
+  --nd-series-7: var(--nd-ochre-600);
+  --nd-series-8: var(--nd-slate-600);
+  --nd-seq-100: #de9589;
+  --nd-seq-200: #c87a6d;
+  --nd-seq-300: #b25f52;
+  --nd-seq-400: #9c4438;
+  --nd-seq-500: #7e3126;
+  --nd-seq-600: #652118;
+  --nd-seq-700: #49150f;
+  --nd-div-neg: var(--nd-brick-600);
+  --nd-div-mid: #d6cfc4;
+  --nd-div-pos: var(--nd-slate-600);
+  color: var(--nd-text);          /* color inherits as a computed value – re-apply so the paper's own tokens win */
+  background: var(--nd-surface);
+}
+
+/* ===== base/reset.css ===== */
+/* Minimal reset – deliberately small so nd.css coexists with other CSS. */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--nd-bg);
+  color: var(--nd-text);
+  font-family: var(--nd-font-text);
+  font-size: 17px;
+  line-height: var(--nd-leading);
+}
+img, svg, video, canvas { max-width: 100%; height: auto; display: block; }
+/* the hidden attribute must win over any display rule a page adds */
+[hidden] { display: none !important; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ===== base/typography.css ===== */
+/* Typography – the document voice. Element styles are global on purpose: this
+   is the base layer for single-file documents. */
+h1, h2, h3, h4 { font-weight: 500; letter-spacing: 0.01em; line-height: 1.2; margin: 0; text-wrap: balance; }
+h1 { font-size: var(--nd-size-display); margin-bottom: 0.6rem; }
+h2 {
+  font-size: var(--nd-size-xl);
+  margin: var(--nd-space-7) 0 var(--nd-space-4);
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--nd-line);
+}
+/* the brick square – Nerdesign's signature */
+h2::before {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  background: var(--nd-accent);
+  margin-right: 0.55em;
+  border-radius: var(--nd-radius-sm);
+  vertical-align: 0.05em;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+h3 { font-size: var(--nd-size-lg); margin: var(--nd-space-5) 0 var(--nd-space-2); }
+h4 { font-size: var(--nd-size-md); margin: var(--nd-space-4) 0 var(--nd-space-2); }
+p { margin: 0 0 var(--nd-space-4); }
+a { color: var(--nd-link); text-decoration-thickness: 1px; text-underline-offset: 0.15em; }
+a:hover { text-decoration-thickness: 2px; }
+strong { font-weight: 600; }
+small { font-size: var(--nd-size-sm); }
+hr { border: 0; border-top: 1px solid var(--nd-line); margin: var(--nd-space-6) 0; }
+code, kbd, samp { font-family: var(--nd-font-numeric); font-size: 0.9em; }
+
+/* centred document header: kicker / h1 / subtitle */
+.nd-header { text-align: center; padding: var(--nd-space-7) var(--nd-space-5) var(--nd-space-6); }
+.nd-header h1 { margin-bottom: 0.6rem; }
+.nd-kicker {
+  text-transform: uppercase;
+  letter-spacing: var(--nd-tracking-kicker);
+  font-size: 0.8rem;
+  color: var(--nd-accent-text);
+  margin: 0 0 0.8rem;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.nd-subtitle { color: var(--nd-text-muted); font-style: italic; font-size: var(--nd-size-lg); margin: 0; }
+.nd-lead { max-width: var(--nd-measure); margin: var(--nd-space-6) auto; font-size: var(--nd-size-lg); text-align: center; }
+.nd-caption { text-align: center; color: var(--nd-text-muted); font-size: var(--nd-size-sm); font-style: italic; margin-top: var(--nd-space-2); }
+.nd-muted { color: var(--nd-text-muted); }
+.nd-caps { text-transform: uppercase; letter-spacing: var(--nd-tracking-caps); font-size: 0.78rem; color: var(--nd-text-muted); }
+/* data numerals: monospace, tabular – dashboards. Documents keep serif numerals with tabular spacing. */
+.nd-numeric { font-family: var(--nd-font-numeric); font-variant-numeric: tabular-nums; }
+.nd-tabular { font-variant-numeric: tabular-nums; }
+.nd-empty { color: var(--nd-text-empty); }  /* decorative «–» for no value; add aria-label="ikke oppgitt" or visually-hidden text */
+
+/* ===== base/a11y.css ===== */
+/* Accessibility base: focus, hidden text, skip link, motion, forced colours. */
+:focus-visible { outline: 2px solid var(--nd-focus); outline-offset: 2px; border-radius: 2px; }
+.nd-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.nd-sr-only:focus, .nd-sr-only:focus-within { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+.nd-skip-link {
+  position: absolute; top: var(--nd-space-2); left: var(--nd-space-2); z-index: 100;
+  padding: var(--nd-space-2) var(--nd-space-4);
+  background: var(--nd-surface); color: var(--nd-text);
+  border: 1px solid var(--nd-line); border-radius: var(--nd-radius);
+  transform: translateY(-200%);
+}
+.nd-skip-link:focus { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+@media (forced-colors: active) {
+  h2::before, .nd-contact-name::after { forced-color-adjust: none; background: CanvasText; }
+  .nd-keyfacts, .nd-contact { background: Canvas; }
+}
+
+/* ===== layout.css ===== */
+/* Layout primitives – a handful, not a grid framework. */
+.nd-page { max-width: var(--nd-page-width); margin: 0 auto; padding: 0 var(--nd-space-5) var(--nd-space-8); }
+.nd-page--narrow { --nd-page-width: 720px; }
+.nd-page--wide { --nd-page-width: 1280px; }
+.nd-measure { max-width: var(--nd-measure); }
+.nd-center { margin-left: auto; margin-right: auto; }
+
+/* auto-fit card grid; set --nd-min per use */
+.nd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--nd-min, 260px), 100%), 1fr)); gap: var(--nd-space-5); margin: var(--nd-space-5) 0; }
+.nd-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: var(--nd-space-5); align-items: center; margin: var(--nd-space-5) 0; }
+@media (max-width: 640px) { .nd-two-col { grid-template-columns: 1fr; } }
+
+/* key facts: a <dl> grid where --nd-line shows through a 1px gap */
+.nd-keyfacts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--nd-line);
+  border: 1px solid var(--nd-line);
+  border-radius: var(--nd-radius);
+  overflow: hidden;
+  margin: var(--nd-space-5) 0;
+}
+.nd-keyfacts > div { background: var(--nd-surface); padding: var(--nd-space-4) 1.2rem; }
+.nd-keyfacts dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: var(--nd-tracking-caps); color: var(--nd-text-muted); margin-bottom: 0.2rem; }
+.nd-keyfacts dd { margin: 0; font-size: 1.05rem; }
+.nd-keyfacts--2 { grid-template-columns: repeat(2, 1fr); }
+.nd-keyfacts--4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 700px) { .nd-keyfacts, .nd-keyfacts--4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 440px) { .nd-keyfacts, .nd-keyfacts--2, .nd-keyfacts--4 { grid-template-columns: 1fr; } }
+
+/* vertical rhythm helpers */
+.nd-stack { display: flex; flex-direction: column; gap: var(--nd-space-4); }
+.nd-stack > * { margin: 0; }
+.nd-row { display: flex; flex-wrap: wrap; gap: var(--nd-space-3); align-items: center; }
+
+/* physical sheets – see print.css for the paged behaviour */
+.nd-sheet {
+  max-width: 800px;
+  margin: var(--nd-space-6) auto;
+  background: var(--nd-surface);
+  border: 1px solid var(--nd-line);
+  border-radius: var(--nd-radius);
+  padding: 3rem 3.2rem 2.5rem;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.nd-sheet .nd-header { padding: 0 0 var(--nd-space-5); }
+.nd-sheet h1 { font-size: var(--nd-size-2xl); }
+.nd-sheet h2 { font-size: 1.25rem; margin: var(--nd-space-6) 0 0.8rem; }
+.nd-sheet--a5 { max-width: 560px; padding: 2rem 2.2rem 1.8rem; font-size: 15px; }
+/* fixed: exactly one page, laid out in mm; children never shrink (clipping is the honest symptom) */
+.nd-sheet--fixed {
+  width: 210mm; height: 296mm; max-width: none;
+  margin: var(--nd-space-6) auto; padding: 11mm 14mm 9mm;
+  border-radius: 0; display: flex; flex-direction: column; overflow: hidden;
+  line-height: 1.45;
+}
+.nd-sheet--fixed > * { flex-shrink: 0; }
+.nd-sheet--fixed.nd-sheet--a5 { width: 148mm; height: 209mm; padding: 9mm 11mm 8mm; }
+.nd-sheet--fixed .nd-bottom { margin-top: auto; border-top: 1px solid var(--nd-line); padding-top: 3.5mm; }
+.nd-page-break { break-before: page; page-break-before: always; }
+
+/* labels: a sheet of fixed-size stickers. Set the geometry per label product. */
+.nd-label-sheet {
+  --nd-label-w: 70mm; --nd-label-h: 37mm; --nd-label-cols: 3; --nd-label-gap-x: 0mm; --nd-label-gap-y: 0mm;
+  display: grid; grid-template-columns: repeat(var(--nd-label-cols), var(--nd-label-w));
+  column-gap: var(--nd-label-gap-x); row-gap: var(--nd-label-gap-y);
+  justify-content: center; margin: var(--nd-space-6) auto; background: var(--nd-surface); padding: 1mm; width: max-content;
+}
+.nd-label {
+  width: var(--nd-label-w); height: var(--nd-label-h); padding: 3mm 4mm; overflow: hidden;
+  border: 1px dashed var(--nd-line); display: flex; flex-direction: column; justify-content: center; gap: 1mm;
+  font-size: 10pt; line-height: 1.25;
+}
+.nd-label .nd-kicker { font-size: 7pt; margin: 0; }
+.nd-label strong { font-size: 13pt; font-weight: 500; }
+
+/* ===== components/document/contact.css ===== */
+/* Contact cards, colophon, footnote, callout, QR, lists. */
+.nd-contact {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--nd-line); border: 1px solid var(--nd-line); border-radius: var(--nd-radius); overflow: hidden;
+  margin: var(--nd-space-5) 0;
+}
+.nd-contact > div { background: var(--nd-surface); padding: var(--nd-space-5) var(--nd-space-5) 1.6rem; text-align: center; }
+.nd-contact-name { margin: 0; font-size: 1.15rem; }
+.nd-contact-name::after { content: ""; display: block; width: 2rem; height: 2px; background: var(--nd-accent); margin: 0.55rem auto 0; border-radius: var(--nd-radius-sm); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.nd-contact-details { margin: 0.7rem 0 0; line-height: 1.9; }
+.nd-contact a { text-decoration: none; }
+.nd-contact a:hover, .nd-contact a:focus-visible { text-decoration: underline; }
+@media (max-width: 540px) { .nd-contact { grid-template-columns: 1fr; } }
+
+.nd-colophon { text-align: center; color: var(--nd-text-muted); font-size: var(--nd-size-sm); padding: var(--nd-space-6) var(--nd-space-5) var(--nd-space-7); border-top: 1px solid var(--nd-line); font-style: italic; }
+.nd-footnote { text-align: center; color: var(--nd-text-muted); font-size: 0.85rem; font-style: italic; margin-top: var(--nd-space-6); padding-top: 0.9rem; border-top: 1px solid var(--nd-line); }
+
+/* callout – the only boxed note */
+.nd-note { border: 1px solid var(--nd-line); border-radius: var(--nd-radius); padding: var(--nd-space-4) 1.2rem; margin: var(--nd-space-5) 0; background: var(--nd-surface); }
+.nd-note > :first-child { margin-top: 0; } .nd-note > :last-child { margin-bottom: 0; }
+.nd-note h3, .nd-note h4 { color: var(--nd-accent-text); font-weight: 600; font-size: var(--nd-size-md); margin: 0 0 0.4rem; }
+.nd-note--warn { border-color: var(--nd-warn); } .nd-note--error { border-color: var(--nd-error); }
+
+.nd-qr { text-align: center; }
+.nd-qr svg, .nd-qr img { width: 24mm; height: 24mm; margin: 0 auto 1.5mm; }
+.nd-qr .nd-qr-url { font-size: 13pt; color: var(--nd-accent-text); letter-spacing: 0.02em; white-space: nowrap; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+.nd-list { padding-left: 1.2em; margin: 0 0 var(--nd-space-4); } .nd-list li { margin-bottom: 0.4rem; }
+.nd-list--tight li { margin-bottom: 0.15rem; }
+
+/* ===== components/document/figure.css ===== */
+/* Images: hero, figure cards, gallery. */
+.nd-hero img { width: 100%; border-radius: var(--nd-radius); }
+.nd-figure-card { margin: 0; background: var(--nd-surface); border: 1px solid var(--nd-line); border-radius: var(--nd-radius); overflow: hidden; }
+.nd-figure-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.nd-figure-card figcaption { padding: 0.9rem 1.1rem 1.1rem; font-size: 0.95rem; }
+.nd-figure-card figcaption strong { display: block; margin-bottom: 0.2rem; }
+.nd-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: var(--nd-space-4); margin: var(--nd-space-5) 0; }
+.nd-gallery figure { margin: 0; }
+/* odd count: the last image spans the row instead of standing alone */
+.nd-gallery figure:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.nd-gallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--nd-radius); }
+.nd-gallery figcaption { font-size: 0.85rem; color: var(--nd-text-muted); font-style: italic; margin-top: 0.3rem; }
+@media (max-width: 540px) { .nd-gallery { grid-template-columns: 1fr; } }
+.nd-two-col img { width: 100%; border-radius: var(--nd-radius); }
+
+/* ===== components/document/lightbox.css ===== */
+/* Lightbox: zoom affordance and PhotoSwipe caption in the system's voice. PhotoSwipe's own CSS ships in vendor/photoswipe/photoswipe.min.css. */
+a.nd-zoom { display: block; cursor: zoom-in; }
+a.nd-zoom:focus-visible { outline-offset: 3px; }
+.pswp__nd-caption {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  max-width: min(90%, var(--nd-measure)); padding: 0.45rem 1.1rem; border-radius: 4px; text-align: center;
+  background: rgba(20, 15, 10, 0.72); color: #fff;
+  font-family: var(--nd-font-text); font-style: italic; font-size: 0.95rem; line-height: 1.4;
+}
+.pswp__nd-caption:empty { display: none; }
+
+/* ===== components/document/table.css ===== */
+/* Tables – white surface, caps headers, right-aligned last column, tfoot rule. */
+.nd-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--nd-space-5) 0;
+  background: var(--nd-surface);
+  border: 1px solid var(--nd-line);
+  border-radius: var(--nd-radius);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.nd-table th, .nd-table td { text-align: left; padding: 0.55rem 1.1rem; border-bottom: 1px solid var(--nd-line); vertical-align: top; }
+.nd-table th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: var(--nd-tracking-caps); color: var(--nd-text-muted); font-weight: 600; white-space: nowrap; }
+.nd-table tr:last-child td { border-bottom: none; }
+.nd-table tfoot td { font-weight: 600; border-top: 2px solid var(--nd-line); }
+.nd-table--end .nd-table-end, .nd-table--end td:last-child, .nd-table--end th:last-child { text-align: right; }
+.nd-table .nd-num { text-align: right; white-space: nowrap; }
+.nd-table .nd-key { font-weight: 600; white-space: nowrap; }
+.nd-table caption { text-align: left; font-style: italic; color: var(--nd-text-muted); padding: 0 0 var(--nd-space-2); caption-side: top; }
+/* compact variant for dense sheets */
+.nd-table--compact th, .nd-table--compact td { padding: 0.5rem 0.8rem; }
+.nd-sheet .nd-table { border: 0; border-radius: 0; background: transparent; margin: 0 0 var(--nd-space-4); }
+
+/* ===== components/dashboard/chart.css ===== */
+/* Chart panel: header, canvas, footer with legend/table toggle, data table. */
+.nd-chart { background: var(--nd-surface); border: 1px solid var(--nd-line); border-radius: 8px; padding: var(--nd-space-4) var(--nd-space-5) var(--nd-space-4); display: flex; flex-direction: column; gap: var(--nd-space-3); container-type: inline-size; }
+.nd-chart-header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--nd-space-3); flex-wrap: wrap; }
+.nd-chart-title { font-size: var(--nd-size-md); font-weight: 500; margin: 0; padding: 0; border: 0; display: flex; align-items: center; gap: 0.55em; }
+.nd-chart-title::before { content: ""; display: inline-block; width: 0.5em; height: 0.5em; background: var(--nd-accent); border-radius: var(--nd-radius-sm); }
+.nd-chart-canvas { width: 100%; height: var(--nd-chart-height, 260px); }
+.nd-chart-canvas:focus-visible { outline-offset: 4px; }
+.nd-chart-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--nd-space-3); flex-wrap: wrap; }
+.nd-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--nd-min, 420px), 100%), 1fr)); gap: var(--nd-space-4); }
+.nd-chart--wide { grid-column: 1 / -1; }
+
+/* data table behind every chart */
+.nd-datatable-toggle { margin-left: auto; }
+.nd-datatable { max-height: 16rem; overflow: auto; border: 1px solid var(--nd-line); border-radius: var(--nd-radius); }
+.nd-datatable[hidden] { display: none; }
+.nd-datatable table { width: 100%; border-collapse: collapse; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.nd-datatable caption { text-align: left; padding: 0.5rem 0.7rem; color: var(--nd-text-muted); font-style: italic; }
+.nd-datatable th { position: sticky; top: 0; background: var(--nd-surface-raised); text-align: left; padding: 0.4rem 0.7rem; border-bottom: 1px solid var(--nd-line); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: var(--nd-tracking-caps); color: var(--nd-text-muted); }
+.nd-datatable td { padding: 0.3rem 0.7rem; border-bottom: 1px solid var(--nd-line-faint); }
+.nd-datatable td.nd-num, .nd-datatable th.nd-num { text-align: right; font-family: var(--nd-font-numeric); }
+.nd-datatable tr:last-child td { border-bottom: 0; }
+/* the ECharts legend is drawn on the canvas; this is for hand-made legends */
+.nd-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--nd-space-2) var(--nd-space-4); font-size: var(--nd-size-sm); color: var(--nd-text-muted); }
+.nd-legend li { display: inline-flex; align-items: center; gap: 0.5em; }
+.nd-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; background: var(--nd-series-1); }
+
+/* ===== components/dashboard/form.css ===== */
+/* Forms: login and settings. Native controls, themed. */
+.nd-form { display: flex; flex-direction: column; gap: var(--nd-space-4); max-width: 24rem; }
+.nd-field { display: flex; flex-direction: column; gap: var(--nd-space-1); }
+.nd-field label { font-size: var(--nd-size-sm); color: var(--nd-text-muted); }
+.nd-field input, .nd-field select, .nd-field textarea { min-height: 40px; padding: 0 var(--nd-space-3); border: 1px solid var(--nd-line); border-radius: var(--nd-radius); background: var(--nd-surface); color: var(--nd-text); width: 100%; }
+.nd-field textarea { padding: var(--nd-space-2) var(--nd-space-3); min-height: 6rem; }
+.nd-field input:focus-visible, .nd-field select:focus-visible, .nd-field textarea:focus-visible { border-color: var(--nd-focus); }
+.nd-field-hint { font-size: var(--nd-size-xs); color: var(--nd-text-muted); margin: 0; }
+.nd-form-error { color: var(--nd-error); font-size: var(--nd-size-sm); margin: 0; }
+.nd-form-error:empty { display: none; }
+
+/* ===== components/dashboard/panel.css ===== */
+/* Dashboard chrome: top bar, panel, segmented control, buttons, status. */
+.nd-topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--nd-space-4); flex-wrap: wrap; padding: var(--nd-space-4) 0 var(--nd-space-5); }
+.nd-brand { font-size: var(--nd-size-xl); font-weight: 500; margin: 0; }
+.nd-brand span { color: var(--nd-text-muted); font-style: italic; font-size: var(--nd-size-md); font-weight: 400; }
+.nd-topbar-actions { display: flex; align-items: center; gap: var(--nd-space-3); flex-wrap: wrap; }
+
+.nd-panel { background: var(--nd-surface); border: 1px solid var(--nd-line); border-radius: 8px; padding: var(--nd-space-5); container-type: inline-size; }
+.nd-panel > :first-child { margin-top: 0; }
+
+/* segmented control – a group of buttons where one is current */
+.nd-segmented { display: inline-flex; border: 1px solid var(--nd-line); border-radius: var(--nd-radius); overflow: hidden; background: var(--nd-bg); }
+.nd-segmented button { min-height: 34px; padding: 0 var(--nd-space-4); border: 0; border-left: 1px solid var(--nd-line); background: transparent; color: var(--nd-text-muted); font-size: var(--nd-size-sm); cursor: pointer; }
+.nd-segmented button:first-child { border-left: 0; }
+.nd-segmented button:hover { color: var(--nd-text); }
+.nd-segmented button[aria-current="true"], .nd-segmented button[aria-pressed="true"] { background: var(--nd-surface); color: var(--nd-text); box-shadow: inset 0 -2px 0 var(--nd-accent); }
+.nd-segmented button:focus-visible { outline-offset: -2px; border-radius: 0; }
+
+.nd-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--nd-space-2); min-height: 32px; padding: 0 var(--nd-space-4); border: 1px solid var(--nd-line); border-radius: var(--nd-radius); background: var(--nd-surface); color: var(--nd-text); font-size: var(--nd-size-sm); text-decoration: none; cursor: pointer; }
+.nd-button:hover { border-color: var(--nd-text-muted); }
+.nd-button--primary { background: var(--nd-accent); border-color: var(--nd-accent); color: var(--nd-text-inverse); }
+.nd-button--primary:hover { filter: brightness(0.94); }
+.nd-button--quiet { background: transparent; border-color: transparent; color: var(--nd-accent-text); }
+.nd-button--quiet:hover { border-color: var(--nd-line); }
+.nd-button[disabled] { opacity: 0.55; cursor: default; }
+
+/* status: a dot plus a word – never colour alone */
+.nd-status { display: inline-flex; align-items: center; gap: 0.45em; font-size: var(--nd-size-sm); }
+.nd-status::before { content: ""; width: 0.55em; height: 0.55em; border-radius: 50%; background: var(--nd-text-muted); }
+.nd-status--ok::before { background: var(--nd-ok); } .nd-status--warn::before { background: var(--nd-warn); } .nd-status--error::before { background: var(--nd-error); } .nd-status--info::before { background: var(--nd-info); }
+.nd-freshness { color: var(--nd-text-muted); font-size: var(--nd-size-sm); font-style: italic; margin: 0; }
+
+/* theme toggle rendered by nd-theme.js: a segmented radio group */
+.nd-theme-toggle fieldset { border: 1px solid var(--nd-line); border-radius: var(--nd-radius); padding: 0; margin: 0; display: inline-flex; overflow: hidden; background: var(--nd-bg); }
+.nd-theme-toggle label { position: relative; display: inline-flex; }
+.nd-theme-toggle input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.nd-theme-toggle span { padding: 0 0.8rem; min-height: 32px; display: inline-flex; align-items: center; font-size: var(--nd-size-sm); color: var(--nd-text-muted); border-left: 1px solid var(--nd-line); }
+.nd-theme-toggle label:first-of-type span { border-left: 0; }
+.nd-theme-toggle input:checked + span { background: var(--nd-surface); color: var(--nd-text); }
+.nd-theme-toggle input:focus-visible + span { outline: 2px solid var(--nd-focus); outline-offset: -2px; }
+
+/* ===== components/dashboard/stat.css ===== */
+/* Stat tile: label · value (+unit) · sub. Values in the numeric face. */
+.nd-stat { background: var(--nd-surface); border: 1px solid var(--nd-line); border-radius: 8px; padding: var(--nd-space-4) var(--nd-space-5); display: flex; flex-direction: column; gap: var(--nd-space-1); container-type: inline-size; }
+.nd-stat-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: var(--nd-tracking-caps); color: var(--nd-text-muted); margin: 0; }
+.nd-stat-value { font-family: var(--nd-font-numeric); font-variant-numeric: tabular-nums; font-size: 2.1rem; line-height: 1.1; margin: 0; display: flex; align-items: baseline; gap: 0.35em; flex-wrap: wrap; }
+.nd-stat-unit { font-family: var(--nd-font-text); font-size: var(--nd-size-md); color: var(--nd-text-muted); }
+.nd-stat-sub { font-size: var(--nd-size-sm); color: var(--nd-text-muted); margin: 0; }
+.nd-stat--hero .nd-stat-value { font-size: 3rem; }
+@container (max-width: 200px) { .nd-stat-value { font-size: 1.6rem; } }
+.nd-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--nd-min, 200px), 100%), 1fr)); gap: var(--nd-space-4); margin: 0 0 var(--nd-space-5); }
+
+/* ===== print.css ===== */
+/* Print – always last in the build so these overrides win over both dark
+   selectors. Print is the light theme on white paper. */
+@page { size: A4 portrait; margin: 14mm 16mm; }
+@page a5 { size: A5 portrait; margin: 11mm 12mm; }
+@page fixed { margin: 0; }
+
+@media print {
+  /* must out-rank the generated dark blocks: same specificity as :root:not([data-theme="light"]), and later in the file */
+  :root, :root:not([data-theme="light"]), :root[data-theme="dark"] {
+    --nd-bg: #ffffff;
+    --nd-surface: #ffffff;
+    --nd-surface-raised: #ffffff;
+    --nd-line: var(--nd-cream-200);
+    --nd-line-faint: #f0eae1;
+    --nd-text: var(--nd-earth-900);
+    --nd-text-muted: var(--nd-earth-500);
+    --nd-text-inverse: #ffffff;
+    --nd-text-empty: var(--nd-cream-200);
+    --nd-accent: var(--nd-brick-600);
+    --nd-accent-text: var(--nd-brick-600);
+    --nd-link: var(--nd-brick-600);
+    --nd-shadow: none;
+    color-scheme: light;
+  }
+  body { font-size: 11pt; line-height: 1.45; }
+  .nd-header { padding: 0 0 1rem; }
+  .nd-page { max-width: none; padding: 0; }
+  .nd-hero img { max-height: 9cm; object-fit: cover; }
+  .nd-lead { margin: 1rem auto; font-size: 12pt; }
+  h2 { margin: 1.2rem 0 0.5rem; break-after: avoid; page-break-after: avoid; }
+  h3, h4 { break-after: avoid; }
+  .nd-table th, .nd-table td { padding: 0.3rem 1.1rem; }
+  .nd-table tr { break-inside: avoid; }
+  .nd-list li { margin-bottom: 0.15rem; }
+  .nd-keyfacts, .nd-figure-card, .nd-table, .nd-gallery figure, .nd-two-col, .nd-contact, .nd-note, .nd-label { break-inside: avoid; page-break-inside: avoid; }
+  /* grid dividers are background showing through a 1px gap – force the cells white too */
+  .nd-keyfacts, .nd-keyfacts > div, .nd-contact, .nd-contact > div { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .nd-keyfacts { grid-template-columns: repeat(3, 1fr); }
+  .nd-keyfacts--2 { grid-template-columns: repeat(2, 1fr); }
+  .nd-keyfacts--4 { grid-template-columns: repeat(4, 1fr); }
+  .nd-grid { grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
+  .nd-gallery { grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+  .nd-gallery img { aspect-ratio: 3 / 2; }
+  /* three columns: the last image spans only when it starts a row */
+  .nd-gallery figure:last-child:nth-child(odd) { grid-column: auto; }
+  .nd-gallery figure:last-child:nth-child(3n+1) { grid-column: 1 / -1; }
+  .nd-gallery figure:last-child:nth-child(3n+1) img { aspect-ratio: 16 / 9; }
+  a { color: inherit; text-decoration: none; }
+  .nd-colophon { padding: 1rem 0 0; }
+
+  /* sheets: one per page */
+  .nd-sheet { max-width: none; margin: 0; border: none; border-radius: 0; padding: 0; break-after: page; page-break-after: always; font-size: 11pt; line-height: 1.4; }
+  .nd-sheet:last-child, .nd-sheet--last { break-after: auto; page-break-after: auto; }
+  .nd-sheet h1 { font-size: 22pt; }
+  .nd-sheet .nd-table th, .nd-sheet .nd-table td { padding: 0.32rem 0.7rem; }
+  .nd-sheet--a5 { page: a5; }
+  .nd-sheet--fixed { page: fixed; width: 210mm; height: 296mm; padding: 11mm 14mm 9mm; margin: 0; }
+  .nd-sheet--fixed.nd-sheet--a5 { width: 148mm; height: 209mm; padding: 9mm 11mm 8mm; }
+  .nd-label-sheet { page: fixed; margin: 0 auto; background: transparent; break-after: page; }
+  .nd-label { border-color: transparent; }
+
+  /* interface that has no meaning on paper */
+  .nd-skip-link, .nd-theme-toggle, .nd-segmented, .nd-button, .nd-datatable-toggle, .nd-no-print { display: none !important; }
+  .nd-datatable { display: block !important; }
+  .nd-print-only { display: revert !important; }
+}
+.nd-print-only { display: none; }

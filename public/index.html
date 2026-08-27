@@ -4,212 +4,142 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Strømforbruk</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script>try{var t=localStorage.getItem('nd-theme');if(t&&t!=='auto')document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="/nd/nd-fonts.css" />
+  <link rel="stylesheet" href="/nd/nd.css" />
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { mono: ['JetBrains Mono', 'monospace'] },
-          colors: { bg: '#0f0f23', panel: '#1a1a2e' },
-        },
-      },
-    };
-  </script>
   <style>
-    body { background: #0f0f23; font-family: 'JetBrains Mono', monospace; }
-    .panel {
-      background: rgba(26, 26, 46, 0.8);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(8px);
-    }
-    .period-btn { transition: all 0.15s; }
-    .period-btn.active {
-      background: rgba(34, 211, 238, 0.15);
-      color: #22d3ee;
-      border-color: rgba(34, 211, 238, 0.3);
-    }
-    .chart-table table { width: 100%; font-size: 0.75rem; border-collapse: collapse; }
-    .chart-table th {
-      position: sticky; top: 0; background: #1a1a2e; text-align: left;
-      padding: 6px 8px; border-bottom: 1px solid #444; font-weight: 600;
-    }
-    .chart-table td { padding: 4px 8px; border-bottom: 1px solid #222; font-variant-numeric: tabular-nums; }
-    .sr-only {
-      position: absolute; width: 1px; height: 1px;
-      padding: 0; margin: -1px; overflow: hidden;
-      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
-    }
-    .sr-only:focus { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; }
-    button:focus-visible, input:focus-visible, a:focus-visible, [role="img"]:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
+    /* page-specific only – everything else is Nerdesign */
+    #login-screen:not([hidden]) { min-height: 100vh; display: grid; place-items: center; padding: var(--nd-space-5); }
+    #login-screen .nd-panel { width: 100%; max-width: 24rem; }
+    #login-screen h1 { font-size: var(--nd-size-xl); text-align: center; margin-bottom: var(--nd-space-5); }
+    .centered { text-align: center; padding: var(--nd-space-8) 0; }
+    .loading-note { text-align: center; color: var(--nd-text-muted); margin: 0 0 var(--nd-space-4); }
+    /* gauge sits beside the line chart on wide screens */
+    .row-gauge { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--nd-space-4); }
+    @media (max-width: 800px) { .row-gauge { grid-template-columns: 1fr; } }
+    #gauge-chart { --nd-chart-height: 220px; }
+    #gauge-stats { text-align: center; font-size: var(--nd-size-sm); color: var(--nd-text-muted); font-family: var(--nd-font-numeric); }
+    #regression-formulas { display: flex; flex-wrap: wrap; gap: var(--nd-space-4); font-size: var(--nd-size-xs); font-family: var(--nd-font-numeric); color: var(--nd-text); }
   </style>
 </head>
-<body class="text-[#a0a0b0] min-h-screen">
-  <a href="#main-content" class="sr-only">Hopp til hovedinnhold</a>
+<body>
+  <a href="#main-content" class="nd-skip-link">Hopp til hovedinnhold</a>
 
   <!-- Login-skjerm -->
-  <div id="login-screen" class="hidden flex items-center justify-center min-h-screen">
-    <div class="panel rounded-lg p-8 w-full max-w-sm">
-      <h2 class="text-xl text-[#22d3ee] mb-6 text-center font-semibold">Strømforbruk</h2>
-      <form id="login-form" class="space-y-4">
-        <div>
-          <label for="login-email" class="sr-only">E-post</label>
-          <input id="login-email" type="email" placeholder="E-post" autocomplete="email"
-            class="w-full bg-[#0f0f23] border border-[#333] rounded px-3 py-2 text-sm text-[#a0a0b0] focus:border-[#22d3ee]" />
+  <div id="login-screen" hidden>
+    <section class="nd-panel" aria-labelledby="login-title">
+      <h1 id="login-title">Strømforbruk</h1>
+      <form id="login-form" class="nd-form" style="max-width: none;">
+        <div class="nd-field">
+          <label for="login-email">E-post</label>
+          <input id="login-email" type="email" autocomplete="username" required />
         </div>
-        <div>
-          <label for="login-password" class="sr-only">Passord</label>
-          <input id="login-password" type="password" placeholder="Passord" autocomplete="current-password"
-            class="w-full bg-[#0f0f23] border border-[#333] rounded px-3 py-2 text-sm text-[#a0a0b0] focus:border-[#22d3ee]" />
+        <div class="nd-field">
+          <label for="login-password">Passord</label>
+          <input id="login-password" type="password" autocomplete="current-password" required />
         </div>
-        <button type="submit"
-          class="w-full bg-[#22d3ee] text-[#0f0f23] font-semibold rounded py-2 text-sm hover:bg-[#06b6d4] transition">
-          Logg inn
-        </button>
-        <p id="login-error" class="text-red-400 text-xs text-center hidden" role="alert" aria-live="assertive" tabindex="-1"></p>
+        <p id="login-error" class="nd-form-error" role="alert" aria-live="assertive" tabindex="-1"></p>
+        <button type="submit" class="nd-button nd-button--primary">Logg inn</button>
       </form>
-    </div>
+    </section>
   </div>
 
   <!-- Dashboard -->
-  <main id="main-content" role="main" class="hidden max-w-7xl mx-auto px-4 py-6">
-
-    <!-- Header -->
-    <header class="flex flex-wrap items-center gap-y-3 mb-6">
-      <h1 class="text-lg text-[#22d3ee] font-semibold tracking-wide mr-auto" tabindex="-1">Strømforbruk</h1>
-      <select id="home-selector"
-        class="bg-[#0f0f23] border border-[#333] rounded px-2 py-1 text-xs text-[#a0a0b0] focus:border-[#22d3ee]"
-        aria-label="Velg bolig">
-      </select>
-      <nav aria-label="Dashbordkontroller" class="flex items-center gap-4 w-full sm:w-auto sm:ml-4 justify-between sm:justify-end">
-        <div id="period-selector" class="flex gap-1" role="group" aria-label="Velg tidsperiode">
-          <button class="period-btn active text-xs px-3 py-1 rounded border border-[#333]" data-days="1" aria-current="true">24t</button>
-          <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="7" aria-current="false">7d</button>
-          <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="28" aria-current="false">28d</button>
-          <button class="period-btn text-xs px-3 py-1 rounded border border-[#333]" data-days="365" aria-current="false">1y</button>
+  <main id="main-content" class="nd-page nd-page--wide" hidden>
+    <header class="nd-topbar">
+      <h1 class="nd-brand" tabindex="-1">Strømforbruk <span>· Helgerød gård</span></h1>
+      <nav class="nd-topbar-actions" aria-label="Dashbordkontroller">
+        <div class="nd-field" style="gap: 0;">
+          <label for="home-selector" class="nd-sr-only">Velg bolig</label>
+          <select id="home-selector"></select>
         </div>
-        <div class="flex items-center gap-4">
-          <button id="refresh-btn" class="text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-label="Oppdater data">&#x21bb;</button>
-          <button id="logout-btn" class="text-xs text-[#666] hover:text-[#a0a0b0] transition">Logg ut</button>
+        <div id="period-selector" class="nd-segmented" role="group" aria-label="Velg tidsperiode">
+          <button type="button" data-days="1" aria-current="true">24 t</button>
+          <button type="button" data-days="7" aria-current="false">7 d</button>
+          <button type="button" data-days="28" aria-current="false">28 d</button>
+          <button type="button" data-days="365" aria-current="false">1 år</button>
         </div>
+        <div id="theme-toggle"></div>
+        <button type="button" id="refresh-btn" class="nd-button" aria-label="Oppdater data">&#x21bb;</button>
+        <button type="button" id="logout-btn" class="nd-button nd-button--quiet">Logg ut</button>
       </nav>
     </header>
 
-    <!-- Loading -->
-    <div id="loading" class="text-center py-20 text-sm text-[#666]" role="status" aria-live="polite">Henter data...</div>
-
-    <!-- Tom database -->
-    <div id="empty-state" class="hidden text-center py-20 text-sm text-[#666]" role="status" aria-live="polite">
+    <p id="loading" class="nd-panel loading-note" role="status" aria-live="polite">Henter data …</p>
+    <p id="empty-state" class="centered nd-muted" role="status" aria-live="polite" hidden>
       Ingen data ennå. Kjør collect-endepunktet for å hente strømdata.
-    </div>
+    </p>
 
-    <!-- Grafer -->
-    <div id="charts-container" class="hidden space-y-4">
-      <!-- Rad 1: Gauge + Linjegraf -->
-      <div class="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-4">
-        <section class="panel rounded-lg p-4" aria-labelledby="gauge-title">
-          <h2 id="gauge-title" class="sr-only">Gjennomsnittlig forbruk</h2>
-          <div id="gauge-chart" role="img" tabindex="0" aria-label="Måler som viser gjennomsnittlig strømforbruk for valgt periode" style="height: 220px;"></div>
-          <div id="gauge-stats" class="text-center text-xs mt-1" style="color: #a0a0b0; font-family: 'JetBrains Mono', monospace;"></div>
+    <div id="charts-container" class="nd-charts" hidden>
+      <div class="row-gauge nd-chart--wide">
+        <section class="nd-chart" aria-labelledby="gauge-title">
+          <div class="nd-chart-header"><h2 class="nd-chart-title" id="gauge-title">Snitt</h2></div>
+          <div id="gauge-chart" class="nd-chart-canvas" role="img" tabindex="0" aria-label="Måler som viser gjennomsnittlig strømforbruk for valgt periode"></div>
+          <div id="gauge-stats"></div>
         </section>
-        <section class="panel rounded-lg p-4" aria-labelledby="line-title">
-          <h2 id="line-title" class="sr-only">Forbruk og temperatur</h2>
-          <div id="line-chart" role="img" tabindex="0" aria-label="Linjegraf over strømforbruk, rullende snitt og temperatur over tid" style="height: 350px;"></div>
-          <div class="flex justify-end mt-2">
-            <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-          </div>
-          <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+        <section class="nd-chart nd-chart--wide" aria-labelledby="line-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="line-title">Forbruk og temperatur</h2><p class="nd-freshness">kWh og °C</p></div>
+        <div id="line-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Linjegraf over strømforbruk, rullende snitt og temperatur over tid"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="line-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="line-table" hidden tabindex="0"></div>
         </section>
       </div>
 
-      <!-- Rad 2: Kumulativ strømstøtte -->
-      <section id="cumulative-panel" class="panel rounded-lg p-4 hidden" aria-labelledby="cumulative-title">
-        <h2 id="cumulative-title" class="sr-only">Strømstøtte: Kumulativt forbruk</h2>
-        <div id="cumulative-chart" role="img" tabindex="0" aria-label="Kumulativ graf over strømforbruk denne måneden mot 5000 kWh-grensen" style="height: 350px;"></div>
-        <div class="flex justify-end mt-2">
-          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-        </div>
-        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      <section class="nd-chart nd-chart--wide" id="cumulative-panel" aria-labelledby="cumulative-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="cumulative-title">Strømstøtte – kumulativt forbruk</h2><p class="nd-freshness">kWh denne måneden mot 5000 kWh</p></div>
+        <div id="cumulative-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Kumulativ graf over strømforbruk denne måneden mot 5000 kWh-grensen"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="cumulative-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="cumulative-table" hidden tabindex="0"></div>
       </section>
-
-      <!-- Rad 3: Forbruksprognose -->
-      <section id="forecast-panel" class="panel rounded-lg p-4 hidden" aria-labelledby="forecast-title">
-        <h2 id="forecast-title" class="sr-only">Forbruksprognose</h2>
-        <div id="forecast-chart" role="img" tabindex="0" aria-label="Forbruksprognose: 7 dager tilbake og 21 dager fremover med usikkerhetsintervall" style="height: 350px;"></div>
-        <div class="flex justify-end mt-2">
-          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-        </div>
-        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      <section class="nd-chart nd-chart--wide" id="forecast-panel" aria-labelledby="forecast-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="forecast-title">Forbruksprognose</h2><p class="nd-freshness">7 dager tilbake, 21 fremover</p></div>
+        <div id="forecast-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Forbruksprognose: 7 dager tilbake og 21 dager fremover med usikkerhetsintervall"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="forecast-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="forecast-table" hidden tabindex="0"></div>
       </section>
-
-      <!-- Rad 4: Temperatur vs forbruk -->
-      <section class="panel rounded-lg p-4" aria-labelledby="scatter-title">
-        <h2 id="scatter-title" class="sr-only">Temperatur vs. forbruk</h2>
-        <div id="scatter-chart" role="img" tabindex="0" aria-label="Punktdiagram som viser sammenheng mellom temperatur og strømforbruk med regresjonslinjer" style="height: 350px;"></div>
-        <div id="regression-formulas" class="text-xs mt-2 flex gap-6"></div>
-        <div class="flex justify-end mt-2">
-          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-        </div>
-        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      <section class="nd-chart nd-chart--wide" aria-labelledby="scatter-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="scatter-title">Temperatur og forbruk</h2><p class="nd-freshness">punkter med regresjonslinjer</p></div>
+        <div id="scatter-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Punktdiagram som viser sammenheng mellom temperatur og strømforbruk med regresjonslinjer"></div>
+        <div id="regression-formulas"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="scatter-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="scatter-table" hidden tabindex="0"></div>
       </section>
-
-      <!-- Rad 3: År-over-år sammenligning -->
-      <section class="panel rounded-lg p-4" aria-labelledby="yoy-title">
-        <h2 id="yoy-title" class="sr-only">År-over-år sammenligning</h2>
-        <div id="yoy-chart" role="img" tabindex="0" aria-label="Linjegraf som sammenligner strømforbruk siste år med forrige periode" style="height: 350px;"></div>
-        <div class="flex justify-end mt-2">
-          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-        </div>
-        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      <section class="nd-chart nd-chart--wide" aria-labelledby="yoy-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="yoy-title">År mot år</h2><p class="nd-freshness">siste år mot forrige periode</p></div>
+        <div id="yoy-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Graf som sammenligner strømforbruk siste år med forrige periode"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="yoy-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="yoy-table" hidden tabindex="0"></div>
       </section>
-
-      <!-- Rad 4: Prosentvis endring per måned -->
-      <section class="panel rounded-lg p-4" aria-labelledby="monthly-change-title">
-        <h2 id="monthly-change-title" class="sr-only">Månedlig endring vs. forrige år</h2>
-        <div id="monthly-change-chart" role="img" tabindex="0" aria-label="Stolpediagram som viser prosentvis endring i strømforbruk per måned sammenlignet med året før" style="height: 280px;"></div>
-        <div class="flex justify-end mt-2">
-          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-        </div>
-        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      <section class="nd-chart nd-chart--wide" aria-labelledby="monthly-change-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="monthly-change-title">Endring per måned</h2><p class="nd-freshness">prosent mot året før</p></div>
+        <div id="monthly-change-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 280px;" aria-label="Stolpediagram som viser prosentvis endring i strømforbruk per måned sammenlignet med året før"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="monthly-change-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="monthly-change-table" hidden tabindex="0"></div>
       </section>
-
-      <!-- Rad 5: Månedlig totalforbruk per år -->
-      <section class="panel rounded-lg p-4" aria-labelledby="monthly-total-title">
-        <h2 id="monthly-total-title" class="sr-only">Månedlig totalforbruk per år</h2>
-        <div id="monthly-total-chart" role="img" tabindex="0" aria-label="Gruppert stolpediagram som viser totalt strømforbruk per måned, gruppert etter år" style="height: 320px;"></div>
-        <div class="flex justify-end mt-2">
-          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-        </div>
-        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      <section class="nd-chart nd-chart--wide" aria-labelledby="monthly-total-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="monthly-total-title">Totalforbruk per måned</h2><p class="nd-freshness">kWh gruppert etter år</p></div>
+        <div id="monthly-total-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 320px;" aria-label="Gruppert stolpediagram som viser totalt strømforbruk per måned, gruppert etter år"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="monthly-total-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="monthly-total-table" hidden tabindex="0"></div>
       </section>
-
-      <!-- Rad 6: Heatmap -->
-      <section class="panel rounded-lg p-4" aria-labelledby="heatmap-title">
-        <h2 id="heatmap-title" class="sr-only">Forbruk: ukedag × klokketime</h2>
-        <div id="heatmap-chart" role="img" tabindex="0" aria-label="Varmekart som viser gjennomsnittlig forbruk fordelt på ukedag og klokketime" style="height: 300px;"></div>
-        <div class="flex justify-end mt-2">
-          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-        </div>
-        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      <section class="nd-chart nd-chart--wide" aria-labelledby="heatmap-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="heatmap-title">Ukedag og klokketime</h2><p class="nd-freshness">snitt kWh</p></div>
+        <div id="heatmap-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 300px;" aria-label="Varmekart som viser gjennomsnittlig forbruk fordelt på ukedag og klokketime"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="heatmap-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="heatmap-table" hidden tabindex="0"></div>
       </section>
-
-      <!-- Rad 6: Snitt per ukedag -->
-      <section class="panel rounded-lg p-4" aria-labelledby="weekday-title">
-        <h2 id="weekday-title" class="sr-only">Snitt per ukedag</h2>
-        <div id="weekday-chart" role="img" tabindex="0" aria-label="Stolpediagram som viser gjennomsnittlig strømforbruk per ukedag" style="height: 280px;"></div>
-        <div class="flex justify-end mt-2">
-          <button class="table-toggle text-xs text-[#666] hover:text-[#a0a0b0] transition" aria-expanded="false">Vis datatabell</button>
-        </div>
-        <div class="chart-table hidden overflow-auto max-h-64 mt-2"></div>
+      <section class="nd-chart nd-chart--wide" aria-labelledby="weekday-title">
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="weekday-title">Snitt per ukedag</h2><p class="nd-freshness">kWh</p></div>
+        <div id="weekday-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 280px;" aria-label="Stolpediagram som viser gjennomsnittlig strømforbruk per ukedag"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="weekday-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="weekday-table" hidden tabindex="0"></div>
       </section>
     </div>
   </main>
 
-  <div id="sr-announcements" class="sr-only" aria-live="polite" role="log"></div>
+  <div id="sr-announcements" class="nd-sr-only" aria-live="polite" role="log"></div>
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>

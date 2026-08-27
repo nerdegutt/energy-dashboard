@@ -1,5 +1,7 @@
 import { sb, getSession, signIn, signOut } from './auth.js';
 import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, monthlyTotals, robustSeasonalRegression, dayOfYear, consumptionDeviation, fetchForecast, historicalDailyTemps, monthlyProjection, forecastTimeline } from './data.js';
+import * as nd from '../nd/nd-echarts.js';
+import { ndTheme } from '../nd/nd-theme.js';
 import {
   renderGauge,
   renderLineChart,
@@ -54,13 +56,14 @@ let currentHomeId = initialState.home;
 // --- Datatabell ---
 const WEEKDAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
 
-function buildTable(chartId, headers, rows) {
-  const section = document.getElementById(chartId).closest('section');
-  const container = section.querySelector('.chart-table');
+// Every column except the first holds numbers, so right-align all but column 0.
+function buildTable(chartId, headers, rows, caption) {
+  const container = document.getElementById(chartId).closest('.nd-chart')?.querySelector('.nd-datatable');
   if (!container) return;
-  const thead = headers.map((h) => `<th>${h}</th>`).join('');
-  const tbody = rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
-  container.innerHTML = `<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
+  nd.buildDataTable(container, headers, rows, {
+    caption: caption || document.getElementById(chartId).closest('.nd-chart').querySelector('.nd-chart-title')?.textContent,
+    numeric: headers.map((_, i) => i).slice(1),
+  });
 }
 
 function fmtTs(ts, daily) {
@@ -77,28 +80,13 @@ function fmtKwh(v) { return v != null ? v.toFixed(2) : '\u2013'; }
 function fmtTemp(v) { return v != null ? v.toFixed(1) : '\u2013'; }
 function fmtPct(v) { return v != null ? v.toFixed(1) : '\u2013'; }
 
-// Toggle-handler (event delegation)
-chartsContainer.addEventListener('click', (e) => {
-  const btn = e.target.closest('.table-toggle');
-  if (!btn) return;
-  const container = btn.closest('section').querySelector('.chart-table');
-  const isHidden = container.classList.toggle('hidden');
-  btn.textContent = isHidden ? 'Vis datatabell' : 'Skjul datatabell';
-  btn.setAttribute('aria-expanded', String(!isHidden));
-});
-
-// --- Skjermleser-annonseringer ---
-function announce(message) {
-  const el = document.getElementById('sr-announcements');
-  if (!el) return;
-  el.textContent = message;
-  setTimeout(() => { el.textContent = ''; }, 1000);
-}
+nd.wireDataTables();
+const announce = nd.announce;
 
 // --- Auth ---
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  loginError.classList.add('hidden');
+  loginError.textContent = '';
 
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
@@ -106,7 +94,6 @@ loginForm.addEventListener('submit', async (e) => {
 
   if (error) {
     loginError.textContent = error.message;
-    loginError.classList.remove('hidden');
   } else {
     showDashboard();
   }
@@ -147,10 +134,8 @@ async function loadHomes() {
 const periodLabels = { 1: '24 timer', 7: '7 dager', 28: '28 dager', 365: '1 år' };
 
 function syncPeriodButtons() {
-  periodSelector.querySelectorAll('.period-btn').forEach((b) => {
-    const active = parseInt(b.dataset.days) === currentDays;
-    b.classList.toggle('active', active);
-    b.setAttribute('aria-current', String(active));
+  periodSelector.querySelectorAll('[data-days]').forEach((b) => {
+    b.setAttribute('aria-current', String(parseInt(b.dataset.days) === currentDays));
   });
 }
 
@@ -170,15 +155,15 @@ periodSelector.addEventListener('click', (e) => {
 
 // --- App flow ---
 function showLogin() {
-  loginScreen.classList.remove('hidden');
-  dashboard.classList.add('hidden');
+  loginScreen.hidden = false;
+  dashboard.hidden = true;
   const emailInput = document.getElementById('login-email');
   if (emailInput) setTimeout(() => emailInput.focus(), 100);
 }
 
 async function showDashboard() {
-  loginScreen.classList.add('hidden');
-  dashboard.classList.remove('hidden');
+  loginScreen.hidden = true;
+  dashboard.hidden = false;
   const heading = dashboard.querySelector('h1');
   if (heading) setTimeout(() => heading.focus(), 100);
   await loadHomes();
@@ -188,23 +173,23 @@ async function showDashboard() {
 
 async function loadData(days) {
   clearCharts();
-  loading.classList.remove('hidden');
-  emptyState.classList.add('hidden');
-  chartsContainer.classList.add('hidden');
+  loading.hidden = false;
+  emptyState.hidden = true;
+  chartsContainer.hidden = true;
   announce('Henter data...');
 
   try {
     const data = await fetchData(days, currentHomeId);
 
     if (data.length === 0) {
-      loading.classList.add('hidden');
-      emptyState.classList.remove('hidden');
+      loading.hidden = true;
+      emptyState.hidden = false;
       announce('Ingen data funnet');
       return;
     }
 
-    loading.classList.add('hidden');
-    chartsContainer.classList.remove('hidden');
+    loading.hidden = true;
+    chartsContainer.hidden = false;
 
     const filled = days < 365 ? fillMissingHours(data, days) : data;
     const chartData = days >= 365 ? dailyAverage(data) : filled;
@@ -251,9 +236,9 @@ async function loadData(days) {
       ])
     );
 
-    const scatterPanel = document.getElementById('scatter-chart').closest('.panel');
+    const scatterPanel = document.getElementById('scatter-chart').closest('.nd-chart');
     if (days >= 365) {
-      scatterPanel.classList.remove('hidden');
+      scatterPanel.hidden = false;
       renderScatterChart(chartData, coeffs);
       // Scatter-tabell
       const scatterRows = chartData
@@ -261,7 +246,7 @@ async function loadData(days) {
         .map((d) => [fmtTemp(d.outside_temp_c), fmtKwh(d.consumption_kwh)]);
       buildTable('scatter-chart', ['Temperatur (\u00b0C)', 'Forbruk (kWh)'], scatterRows);
     } else {
-      scatterPanel.classList.add('hidden');
+      scatterPanel.hidden = true;
     }
 
     renderYoyChart(yoy);
@@ -311,7 +296,7 @@ async function loadData(days) {
 
         // Kumulativ strømstøtte-graf (kun individuelle hjem)
         if (currentHomeId !== 'all') {
-          cumulativePanel.classList.remove('hidden');
+          cumulativePanel.hidden = false;
           renderCumulativeChart(projResult);
           buildTable('cumulative-chart',
             ['Dato', 'Daglig (kWh)', 'Faktisk (kWh)', 'Prognose (kWh)', 'Høy (kWh)', 'Lav (kWh)'],
@@ -325,12 +310,12 @@ async function loadData(days) {
             ])
           );
         } else {
-          cumulativePanel.classList.add('hidden');
+          cumulativePanel.hidden = true;
         }
 
         // Forbruksprognose-graf (alle moduser)
         const timelineResult = forecastTimeline(yoyData, forecastData, histTemps, coeffs);
-        forecastPanel.classList.remove('hidden');
+        forecastPanel.hidden = false;
         renderForecastChart(timelineResult);
         buildTable('forecast-chart',
           ['Dato', 'Forbruk (kWh)', 'Prognose (kWh)', 'Temperatur (\u00b0C)', 'Temp.prognose (\u00b0C)'],
@@ -343,13 +328,13 @@ async function loadData(days) {
           ])
         );
       } else {
-        cumulativePanel.classList.add('hidden');
-        forecastPanel.classList.add('hidden');
+        cumulativePanel.hidden = true;
+        forecastPanel.hidden = true;
       }
     } catch (forecastErr) {
       console.warn('Prognose-beregning feilet:', forecastErr);
-      cumulativePanel.classList.add('hidden');
-      forecastPanel.classList.add('hidden');
+      cumulativePanel.hidden = true;
+      forecastPanel.hidden = true;
     }
 
     // Gauge-stats: siste 12 mnd + forventet denne måneden, med endring vs forrige periode
@@ -368,10 +353,11 @@ async function loadData(days) {
         .filter(d => { const t = new Date(d.timestamp); return d.consumption_kwh != null && t >= twoYearsAgo && t < oneYearAgo; })
         .reduce((s, d) => s + d.consumption_kwh, 0);
 
+      const status = nd.readTokens().status;
       const fmtChange = (curr, prev) => {
         if (!prev) return '';
         const pct = ((curr - prev) / prev) * 100;
-        const color = pct <= 0 ? '#22c55e' : '#ef4444';
+        const color = pct <= 0 ? status.ok : status.error;
         const sign = pct > 0 ? '+' : '';
         return `<span style="color:${color}">(${sign}${pct.toFixed(0)} %)</span>`;
       };
@@ -403,11 +389,11 @@ async function loadData(days) {
       ])
     );
 
-    const heatmapPanel = document.getElementById('heatmap-chart').closest('.panel');
-    const weekdayPanel = document.getElementById('weekday-chart').closest('.panel');
+    const heatmapPanel = document.getElementById('heatmap-chart').closest('.nd-chart');
+    const weekdayPanel = document.getElementById('weekday-chart').closest('.nd-chart');
     if (days >= 365) {
-      heatmapPanel.classList.remove('hidden');
-      weekdayPanel.classList.remove('hidden');
+      heatmapPanel.hidden = false;
+      weekdayPanel.hidden = false;
       renderHeatmap(heatmap);
       renderWeekdayChart(weekday);
       // Heatmap-tabell
@@ -421,8 +407,8 @@ async function loadData(days) {
         weekday.map((d) => [d.day, fmtKwh(d.avg)])
       );
     } else {
-      heatmapPanel.classList.add('hidden');
-      weekdayPanel.classList.add('hidden');
+      heatmapPanel.hidden = true;
+      weekdayPanel.hidden = true;
     }
 
     announce(`Data lastet for ${periodLabels[days] || days + ' dager'}`);
@@ -434,6 +420,13 @@ async function loadData(days) {
 
 // --- Resize ---
 window.addEventListener('resize', handleResize);
+
+// --- Theme ---
+// The charts are built directly with ECharts (not nd.mount), and ECharts binds
+// the theme at init, so a theme change means re-running the render pass.
+ndTheme.init();
+ndTheme.mount(document.getElementById('theme-toggle'));
+nd.onThemeChange(() => { if (!dashboard.hidden) loadData(currentDays); });
 
 // --- Init ---
 async function init() {
