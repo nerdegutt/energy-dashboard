@@ -35,7 +35,7 @@ Supabase (PostgreSQL)
     ↓
 Frontend spør Supabase direkte via JS-klienten (RLS sikrer tilgang)
     ↓
-public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
+public/index.html + ES modules (ECharts + Nerdesign + Supabase Auth)
 ```
 
 ## Filstruktur
@@ -66,7 +66,7 @@ public/index.html + ES modules (ECharts + Tailwind CSS + Supabase Auth)
 - **Tibber**: Direkte GraphQL-kall med native fetch (ingen npm-pakke)
 - **Temperatur**: Frost API (met.no, stasjon SN17280)
 - **Grafer**: ECharts (via CDN)
-- **Styling**: Tailwind CSS (via CDN)
+- **Styling**: Nerdesign (vendret i `public/nd/`, se «Design og tema»)
 - **Cron**: cron-job.org (ekstern, hver time)
 - **Ingen build step, ingen bundler, ingen React/Next.js**
 
