@@ -84,7 +84,8 @@ CREATE TABLE homes (
   sort_order INT DEFAULT 0,
   lat NUMERIC,                   -- Breddegrad (for temperaturprognose fra met.no)
   lon NUMERIC,                   -- Lengdegrad (for temperaturprognose fra met.no)
-  frost_station TEXT              -- Frost-stasjon for historisk temperatur (default: SN17280)
+  frost_station TEXT,              -- Frost-stasjon for historisk temperatur (default: SN17280)
+  collect_enabled BOOLEAN NOT NULL DEFAULT true  -- false = collect hopper over hjemmet, data beholdes
 );
 
 CREATE TABLE consumption (
@@ -109,6 +110,11 @@ INSERT INTO homes (id, name, sort_order, lat, lon, frost_station) VALUES
 
 - `lat`/`lon`: koordinater for temperaturprognose (met.no). Finn via Google Maps
 - `frost_station`: nærmeste Frost-stasjon for historisk temperatur. Finn via [Frost stasjonsliste](https://frost.met.no/sources/v0.jsonld). Utelat for å bruke default SN17280
+- `collect_enabled`: sett til `false` for å stoppe innsamlingen for et hjem (f.eks. ved utleie der noen andre har overtatt måleren). Eksisterende data beholdes og vises fortsatt i dashboardet:
+
+```sql
+UPDATE homes SET collect_enabled = false WHERE id = '<TIBBER_HOME_ID>';
+```
 
 ### 4. Row Level Security
 

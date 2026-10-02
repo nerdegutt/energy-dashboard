@@ -21,7 +21,11 @@ module.exports = async function handler(req, res) {
     );
 
     // --- Hent homes fra DB ---
-    let homesQuery = supabase.from('homes').select('id, frost_station').order('sort_order');
+    let homesQuery = supabase
+      .from('homes')
+      .select('id, frost_station')
+      .eq('collect_enabled', true)
+      .order('sort_order');
     if (filterHomeId) homesQuery = homesQuery.eq('id', filterHomeId);
     const { data: homes, error: homesError } = await homesQuery;
     if (homesError) throw homesError;
@@ -30,27 +34,38 @@ module.exports = async function handler(req, res) {
     }
 
     // --- Tibber: hent data for hvert hjem ---
+    // Feil for ett hjem stopper ikke de andre; de rapporteres til slutt.
     const allNodesByHome = [];
+    const failed = [];
     for (const home of homes) {
-      let nodes;
-      if (hours <= 744) {
-        nodes = await fetchTibber(home.id, `last: ${hours}`);
-      } else {
-        nodes = await fetchPaginated(home.id, hours);
+      try {
+        let nodes;
+        if (hours <= 744) {
+          nodes = await fetchTibber(home.id, `last: ${hours}`);
+        } else {
+          nodes = await fetchPaginated(home.id, hours);
+        }
+        nodes = nodes.filter((n) => n && n.from);
+        allNodesByHome.push({ homeId: home.id, nodes });
+      } catch (err) {
+        console.error(`Tibber fetch failed for home ${home.id}:`, err.message);
+        failed.push({ homeId: home.id, error: err.message });
       }
-      nodes = nodes.filter((n) => n && n.from);
-      allNodesByHome.push({ homeId: home.id, nodes });
     }
 
     // Samle alle noder for Frost-oppslag
     const allNodes = allNodesByHome.flatMap((h) => h.nodes);
     if (allNodes.length === 0) {
+      if (failed.length > 0) {
+        return res.status(502).json({ error: 'Tibber fetch failed', failed, upserted: 0 });
+      }
       return res.status(200).json({ message: 'No data returned', upserted: 0 });
     }
 
     // --- Frost (temperatur, én gang per unik stasjon) ---
+    const okHomeIds = new Set(allNodesByHome.map((h) => h.homeId));
     const stationToHomes = new Map();
-    for (const home of homes) {
+    for (const home of homes.filter((h) => okHomeIds.has(h.id))) {
       const station = home.frost_station || 'SN17280';
       if (!stationToHomes.has(station)) stationToHomes.set(station, []);
       stationToHomes.get(station).push(home.id);
@@ -115,9 +130,11 @@ module.exports = async function handler(req, res) {
       tempPoints[station] = tMap.size;
     }
 
-    return res.status(200).json({
-      message: 'OK',
-      homes: homes.map((h) => h.id),
+    // Delvis feil gir fortsatt feilkode, slik at cron-job.org varsler
+    return res.status(failed.length > 0 ? 502 : 200).json({
+      message: failed.length > 0 ? 'Partial failure' : 'OK',
+      homes: [...okHomeIds],
+      failed,
       upserted: totalUpserted,
       tempPoints,
     });

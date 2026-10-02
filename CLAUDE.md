@@ -81,7 +81,8 @@ CREATE TABLE homes (
   sort_order INT DEFAULT 0,
   lat NUMERIC,                -- Breddegrad (for temperaturprognose)
   lon NUMERIC,                -- Lengdegrad (for temperaturprognose)
-  frost_station TEXT           -- Frost-stasjon (default: SN17280)
+  frost_station TEXT,           -- Frost-stasjon (default: SN17280)
+  collect_enabled BOOLEAN NOT NULL DEFAULT true  -- false = collect hopper over hjemmet, data beholdes
 );
 
 CREATE TABLE consumption (
@@ -99,6 +100,7 @@ CREATE INDEX idx_consumption_timestamp ON consumption (timestamp);
 - Homes konfigureres direkte i `homes`-tabellen (ikke via env vars)
 - `lat`/`lon` brukes av prognosegrafer til å hente temperaturprognose fra met.no
 - `frost_station` er valgfri – default `SN17280` (Gullholmen). Hvert hjem kan ha sin egen stasjon
+- `collect_enabled = false` får collect til å hoppe over hjemmet (f.eks. utleid sidebygning der leietaker har overtatt måleren). Data og hjemvalg i dashboardet beholdes
 
 ### RLS
 
@@ -142,7 +144,8 @@ Ekstern cron-jobb som POSTer til collect-endepunktet:
 
 ### Tibber API
 - Direkte GraphQL-kall med native fetch mot `https://api.tibber.com/v1-beta/gql`
-- Henter homes fra `homes`-tabellen i Supabase, looper over alle
+- Henter homes med `collect_enabled = true` fra `homes`-tabellen i Supabase, looper over dem
+- Feil for ett hjem stopper ikke de andre: vellykkede hjem lagres, feilede listes i `failed`, og svaret får status 502 slik at cron-job.org fortsatt varsler
 - Støtter `?home=<id>` query parameter for å kjøre innsamling for ett spesifikt hjem (nyttig for backfill)
 - Default: hent siste 72 timer (`last: 72`)
 - Støtter `?hours=N` query parameter for backfill
