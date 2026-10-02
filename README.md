@@ -116,6 +116,12 @@ INSERT INTO homes (id, name, sort_order, lat, lon, frost_station) VALUES
 UPDATE homes SET collect_enabled = false WHERE id = '<TIBBER_HOME_ID>';
 ```
 
+Har du en database fra før kolonnen fantes, legg den til først:
+
+```sql
+ALTER TABLE homes ADD COLUMN collect_enabled BOOLEAN NOT NULL DEFAULT true;
+```
+
 ### 4. Row Level Security
 
 Aktiver RLS på begge tabellene og legg til policies:
@@ -155,6 +161,16 @@ Opprett en jobb:
 - **Schedule**: hver time
 
 Collect-endepunktet henter de siste 72 timene fra Tibber, så et tapt kjøretidspunkt etterfylles automatisk neste gang.
+
+Hjemmene hentes hvert for seg. Feiler Tibber for ett hjem, lagres de andre likevel. Svaret lister hjemmet som feilet under `failed` og får status 502, så cron-job.org varsler.
+
+#### Når cron-job.org melder om feil
+
+cron-job.org slår av jobben etter for mange feil på rad. Slik finner du årsaken:
+
+1. Kjør collect manuelt (se Backfill) og se på `failed` i svaret.
+2. Gjelder feilen ett hjem du ikke lenger har tilgang til i Tibber (f.eks. fordi en leietaker har overtatt måleren), sett `collect_enabled = false` for hjemmet (se steg 3).
+3. Slå på jobben igjen i cron-job.org. Timer som manglet de siste 72 timene, fylles inn ved neste kjøring.
 
 ### 8. Deploy
 

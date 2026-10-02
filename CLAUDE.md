@@ -241,6 +241,7 @@ curl -X POST "https://energy-dashboard-tan.vercel.app/api/collect?hours=100000&h
 - Vercel free tier (Hobby) er tilstrekkelig – cron håndteres av cron-job.org (ekstern)
 - Supabase free tier holder i årevis med denne datamengden (~8760 rader/år per hjem)
 - cron-job.org kjører hver time; collect henter uansett siste 72t, så tapte/forsinkede kjøringer etterfylles automatisk
+- cron-job.org slår av jobben etter for mange feil på rad – slå den på igjen manuelt etter at feilen er rettet. Vercel (Hobby) har kort loggoppbevaring, så tomme `vercel logs` betyr ikke at det ikke har kommet kall
 - `vercel dev` leser `.env.local` (ikke `.env`) – bruk `vercel env pull` eller opprett manuelt
 - Collect lagrer rader med null consumption (Tibber returnerer null for nylige timer) – temperaturdata bevares
 - Tibber-data kan ha hull (manglende timer) for inneværende dag pga forsinkelser – prognosefunksjoner fyller hull med modellprediksjoner time-for-time
