@@ -2,6 +2,13 @@
   "name": "energy-dashboard",
   "private": true,
   "dependencies": {
-    "@supabase/supabase-js": "^2"
+    "jose": "^6.2.12",
+    "pg": "^8.23.1"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

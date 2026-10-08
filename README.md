@@ -1,6 +1,6 @@
 # Energy Dashboard
 
-Personlig dashboard for strømforbruk. Henter timedata fra [Tibber](https://tibber.com/) og utetemperatur fra [Frost API](https://frost.met.no/) (met.no), lagrer alt i [Supabase](https://supabase.com/) (PostgreSQL), og visualiserer med [ECharts](https://echarts.apache.org/). Hostet på [Vercel](https://vercel.com/). Grafana-inspirert mørkt tema med JetBrains Mono.
+Personlig dashboard for strømforbruk. Henter timedata fra [Tibber](https://tibber.com/) og utetemperatur fra [Frost API](https://frost.met.no/) (met.no), lagrer alt i PostgreSQL og visualiserer med [ECharts](https://echarts.apache.org/). Kjører på familiens hjemmeserver (Dokploy, bak Cloudflare Tunnel og Cloudflare Access). Grafana-inspirert mørkt tema med JetBrains Mono.
 
 Støtter flere hjem (Tibber homes) med individuell temperaturstasjon og koordinater for prognose.
 
@@ -37,167 +37,55 @@ kWh = a + b·T + c·T² + d·sin(2π·doy/365) + e·cos(2π·doy/365)
 ## Arkitektur
 
 ```
-cron-job.org (ekstern cron, hver time)
-    ↓
-/api/collect.js (Vercel serverless, henter siste 72t)
-    ↓ Tibber GraphQL API → forbruksdata
-    ↓ Frost API (met.no) → temperaturdata (per hjem-stasjon)
-    ↓
-Supabase (PostgreSQL, upsert)
-    ↓
-Frontend spør Supabase direkte (RLS + auth)
-    ↓ /api/forecast.js → temperaturprognose fra met.no
-    ↓
-Ren HTML + vanilla JS + ECharts
+server.mjs (Node, Docker, Dokploy)
+  ├─ innsamling hver time (Tibber siste 72 t + Frost-temperatur) → PostgreSQL
+  ├─ /api/homes, /api/consumption → frontend
+  ├─ /api/forecast → temperaturprognose fra met.no
+  └─ public/ (HTML + vanilla JS + ECharts + Nerdesign)
 ```
 
-Ingen build step, ingen bundler, ingen React. Bare HTML, vanilla JavaScript (ES modules) og serverless functions (CommonJS).
+Ingen build step, ingen bundler, ingen React. Innloggingen gjøres av Cloudflare Access foran appen; serveren sjekker
+Access-tokenet. Ingen ekstern cron: appen samler inn selv og melder fra til healthchecks.io, som sender e-post hvis
+innsamlingen feiler eller stopper.
 
 ## Tech stack
 
 | Hva | Tjeneste |
 |-----|----------|
-| Hosting + serverless | Vercel (free tier) |
-| Database | Supabase PostgreSQL (free tier) |
-| Autentisering | Supabase Auth (e-post/passord) |
+| Hosting | Egen server med Dokploy (Docker) |
+| Database | PostgreSQL 18 |
+| Innlogging | Cloudflare Access |
 | Strømdata | Tibber GraphQL API |
 | Temperatur (historisk) | Frost API (met.no, konfigurerbar stasjon per hjem) |
 | Temperatur (prognose) | met.no Locationforecast + Subseasonal |
 | Grafer | ECharts (CDN) |
-| Styling | Nerdesign CSS (CDN) |
-| Cron | cron-job.org (ekstern) |
+| Styling | Nerdesign (vendret i `public/nd/`) |
+| Overvåking | healthchecks.io |
 
 ## Oppsett
 
-### 1. Kontoer
-
-Opprett kontoer hos [Vercel](https://vercel.com/), [Supabase](https://supabase.com/), [Tibber Developer](https://developer.tibber.com/) og [Frost (met.no)](https://frost.met.no/).
-
-### 2. Database (Supabase)
-
-Opprett tabellene i Supabase SQL Editor:
-
-```sql
-CREATE TABLE homes (
-  id TEXT PRIMARY KEY,           -- Tibber home ID
-  name TEXT NOT NULL,            -- Visningsnavn ("Hjemme", "Hytta")
-  sort_order INT DEFAULT 0,
-  lat NUMERIC,                   -- Breddegrad (for temperaturprognose fra met.no)
-  lon NUMERIC,                   -- Lengdegrad (for temperaturprognose fra met.no)
-  frost_station TEXT,              -- Frost-stasjon for historisk temperatur (default: SN17280)
-  collect_enabled BOOLEAN NOT NULL DEFAULT true  -- false = collect hopper over hjemmet, data beholdes
-);
-
-CREATE TABLE consumption (
-  home_id TEXT NOT NULL REFERENCES homes(id),
-  timestamp TIMESTAMPTZ NOT NULL,
-  consumption_kwh NUMERIC,
-  outside_temp_c NUMERIC,
-  PRIMARY KEY (home_id, timestamp)
-);
-CREATE INDEX idx_consumption_timestamp ON consumption (timestamp);
-```
-
-### 3. Legg inn hjem
-
-Finn dine Tibber home IDs via [Tibber API Explorer](https://developer.tibber.com/explorer) og legg dem inn i `homes`-tabellen:
+1. Kontoer hos [Tibber Developer](https://developer.tibber.com/) og [Frost (met.no)](https://frost.met.no/).
+2. En Postgres-database; appen lager tabellene selv (`db/postgres.sql`).
+3. Bygg og kjør `Dockerfile` med miljøvariablene `DATABASE_URL`, `TIBBER_API_TOKEN`, `FROST_CLIENT_ID` (og valgfritt
+   `HEALTHCHECK_ENERGY_URL`, `CRON_SECRET`, `CF_ACCESS_TEAM`, `CF_ACCESS_AUD`). Port 3000.
+4. Legg inn hjemmene i `homes`:
 
 ```sql
 INSERT INTO homes (id, name, sort_order, lat, lon, frost_station) VALUES
-  ('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'Hjemme', 1, 59.91, 10.75, 'SN17280'),
-  ('yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy', 'Hytta',  2, 58.15, 8.00,  'SN38140');
+  ('<TIBBER_HOME_ID>', 'Hjemme', 1, 59.43, 10.65, 'SN17280');
 ```
 
-- `lat`/`lon`: koordinater for temperaturprognose (met.no). Finn via Google Maps
-- `frost_station`: nærmeste Frost-stasjon for historisk temperatur. Finn via [Frost stasjonsliste](https://frost.met.no/sources/v0.jsonld). Utelat for å bruke default SN17280
-- `collect_enabled`: sett til `false` for å stoppe innsamlingen for et hjem (f.eks. ved utleie der noen andre har overtatt måleren). Eksisterende data beholdes og vises fortsatt i dashboardet:
-
-```sql
-UPDATE homes SET collect_enabled = false WHERE id = '<TIBBER_HOME_ID>';
-```
-
-Har du en database fra før kolonnen fantes, legg den til først:
-
-```sql
-ALTER TABLE homes ADD COLUMN collect_enabled BOOLEAN NOT NULL DEFAULT true;
-```
-
-### 4. Row Level Security
-
-Aktiver RLS på begge tabellene og legg til policies:
-
-```sql
-ALTER TABLE homes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE consumption ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Autentiserte kan lese homes" ON homes FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Autentiserte kan lese consumption" ON consumption FOR SELECT TO authenticated USING (true);
-```
-
-### 5. Auth
-
-Opprett en bruker i Supabase Auth (Authentication → Users → Add User).
-
-### 6. Environment variables (Vercel)
-
-Sett i Vercel → Settings → Environment Variables:
-
-```
-TIBBER_API_TOKEN       # Fra developer.tibber.com
-SUPABASE_URL           # Supabase prosjekt-URL
-SUPABASE_SERVICE_KEY   # Supabase service_role key (kun server-side)
-CRON_SECRET            # Hemmelig nøkkel for å sikre collect-endepunktet
-FROST_CLIENT_ID        # Fra frost.met.no
-```
-
-### 7. Cron (cron-job.org)
-
-Datainnsamlingen drives av en ekstern cron-tjeneste, [cron-job.org](https://cron-job.org) (gratis). GitHub Actions brukes ikke – planlagte workflows struper sub-timesintervaller ned mot ~hver time, og er uansett unødvendig her siden cron-job.org gjør jobben.
-
-Opprett en jobb:
-- **URL**: `https://din-app.vercel.app/api/collect`
-- **Metode**: `POST` (under Advanced settings)
-- **Header**: `x-cron-secret: <samme verdi som CRON_SECRET i Vercel>`
-- **Schedule**: hver time
-
-Collect-endepunktet henter de siste 72 timene fra Tibber, så et tapt kjøretidspunkt etterfylles automatisk neste gang.
-
-Hjemmene hentes hvert for seg. Feiler Tibber for ett hjem, lagres de andre likevel. Svaret lister hjemmet som feilet under `failed` og får status 502, så cron-job.org varsler.
-
-#### Når cron-job.org melder om feil
-
-cron-job.org slår av jobben etter for mange feil på rad. Slik finner du årsaken:
-
-1. Kjør collect manuelt (se Backfill) og se på `failed` i svaret.
-2. Gjelder feilen ett hjem du ikke lenger har tilgang til i Tibber (f.eks. fordi en leietaker har overtatt måleren), sett `collect_enabled = false` for hjemmet (se steg 3).
-3. Slå på jobben igjen i cron-job.org. Timer som manglet de siste 72 timene, fylles inn ved neste kjøring.
-
-### 8. Deploy
-
-```bash
-git push  # Vercel bygger automatisk fra main
-```
-
-### 9. Backfill
-
-Hent historisk data (Tibber har 1–2 år tilbake):
-
-```bash
-# Alle hjem:
-curl -X POST "https://din-app.vercel.app/api/collect?hours=100000" \
-  -H "x-cron-secret: din-nøkkel"
-
-# Spesifikt hjem:
-curl -X POST "https://din-app.vercel.app/api/collect?hours=100000&home=<TIBBER_HOME_ID>" \
-  -H "x-cron-secret: din-nøkkel"
-```
+5. Backfill historikk fra Tibber: `curl -X POST "<adresse>/api/collect?hours=100000" -H "x-cron-secret: <CRON_SECRET>"`.
 
 ## Vibe-kodet
 
 Dette prosjektet er nær 100 % vibe-kodet med [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Alt av kode -- frontend, backend, databehandling, grafer og cron-oppsett -- er skrevet av Claude gjennom naturlig dialog på norsk. Det eneste som er gjort manuelt er opprettelse av kontoer hos de ulike tjenestene og konfigurasjon av API-nøkler.
 
-## Lokal forhåndsvisning uten Vercel
+## Lokal kjøring
 
 ```bash
-node dev-server.mjs     # serverer public/ og /api/config fra .env / .env.local → http://localhost:3000
+docker network create entest
+docker run -d --rm --name entest-db --network entest -e POSTGRES_USER=energy -e POSTGRES_PASSWORD=test -e POSTGRES_DB=energy postgres:18
+docker build -t energy .
+docker run --rm --network entest -p 3000:3000 -e DATABASE_URL=postgresql://energy:test@entest-db:5432/energy energy
 ```

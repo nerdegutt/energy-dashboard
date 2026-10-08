@@ -8,12 +8,8 @@
   <link rel="stylesheet" href="/nd/nd-fonts.css" />
   <link rel="stylesheet" href="/nd/nd.css" />
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     /* page-specific only – everything else is Nerdesign */
-    #login-screen:not([hidden]) { min-height: 100vh; display: grid; place-items: center; padding: var(--nd-space-5); }
-    #login-screen .nd-panel { width: 100%; max-width: 24rem; }
-    #login-screen h1 { font-size: var(--nd-size-xl); text-align: center; margin-bottom: var(--nd-space-5); }
     .centered { text-align: center; padding: var(--nd-space-8) 0; }
     .loading-note { text-align: center; color: var(--nd-text-muted); margin: 0 0 var(--nd-space-4); }
     /* gauge sits beside the line chart on wide screens */
@@ -26,25 +22,6 @@
 </head>
 <body>
   <a href="#main-content" class="nd-skip-link">Hopp til hovedinnhold</a>
-
-  <!-- Login-skjerm -->
-  <div id="login-screen" hidden>
-    <section class="nd-panel" aria-labelledby="login-title">
-      <h1 id="login-title">Strømforbruk</h1>
-      <form id="login-form" class="nd-form" style="max-width: none;">
-        <div class="nd-field">
-          <label for="login-email">E-post</label>
-          <input id="login-email" type="email" autocomplete="username" required />
-        </div>
-        <div class="nd-field">
-          <label for="login-password">Passord</label>
-          <input id="login-password" type="password" autocomplete="current-password" required />
-        </div>
-        <p id="login-error" class="nd-form-error" role="alert" aria-live="assertive" tabindex="-1"></p>
-        <button type="submit" class="nd-button nd-button--primary">Logg inn</button>
-      </form>
-    </section>
-  </div>
 
   <!-- Dashboard -->
   <main id="main-content" class="nd-page nd-page--wide" hidden>
@@ -63,7 +40,7 @@
         </div>
         <div id="theme-toggle"></div>
         <button type="button" id="refresh-btn" class="nd-button" aria-label="Oppdater data">&#x21bb;</button>
-        <button type="button" id="logout-btn" class="nd-button nd-button--quiet">Logg ut</button>
+        <a class="nd-button nd-button--quiet" href="/cdn-cgi/access/logout">Logg ut</a>
       </nav>
     </header>
 

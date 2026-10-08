@@ -1,4 +1,4 @@
-import { sb, getSession, signIn, signOut } from './auth.js';
+import { getJson } from './api.js';
 import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, monthlyTotals, robustSeasonalRegression, dayOfYear, consumptionDeviation, fetchForecast, historicalDailyTemps, monthlyProjection, forecastTimeline } from './data.js';
 import * as nd from '../nd/nd-echarts.js';
 import { ndTheme } from '../nd/nd-theme.js';
@@ -17,14 +17,10 @@ import {
   handleResize,
 } from './charts.js';
 
-const loginScreen = document.getElementById('login-screen');
 const dashboard = document.getElementById('main-content');
 const loading = document.getElementById('loading');
 const emptyState = document.getElementById('empty-state');
 const chartsContainer = document.getElementById('charts-container');
-const loginForm = document.getElementById('login-form');
-const loginError = document.getElementById('login-error');
-const logoutBtn = document.getElementById('logout-btn');
 const periodSelector = document.getElementById('period-selector');
 
 // --- URL-state ---
@@ -83,27 +79,6 @@ function fmtPct(v) { return v != null ? v.toFixed(1) : '\u2013'; }
 nd.wireDataTables();
 const announce = nd.announce;
 
-// --- Auth ---
-loginForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  loginError.textContent = '';
-
-  const email = document.getElementById('login-email').value;
-  const password = document.getElementById('login-password').value;
-  const error = await signIn(email, password);
-
-  if (error) {
-    loginError.textContent = error.message;
-  } else {
-    showDashboard();
-  }
-});
-
-logoutBtn.addEventListener('click', async () => {
-  await signOut();
-  showLogin();
-});
-
 document.getElementById('refresh-btn').addEventListener('click', () => {
   clearCache();
   loadData(currentDays);
@@ -120,8 +95,7 @@ document.getElementById('home-selector').addEventListener('change', (e) => {
 let homesData = [];
 
 async function loadHomes() {
-  const { data } = await sb.from('homes').select('id, name, sort_order, lat, lon').order('sort_order');
-  homesData = data || [];
+  homesData = await getJson('/api/homes');
   const selector = document.getElementById('home-selector');
   selector.innerHTML = '';
   selector.add(new Option('Alle', 'all'));
@@ -154,15 +128,7 @@ periodSelector.addEventListener('click', (e) => {
 });
 
 // --- App flow ---
-function showLogin() {
-  loginScreen.hidden = false;
-  dashboard.hidden = true;
-  const emailInput = document.getElementById('login-email');
-  if (emailInput) setTimeout(() => emailInput.focus(), 100);
-}
-
 async function showDashboard() {
-  loginScreen.hidden = true;
   dashboard.hidden = false;
   const heading = dashboard.querySelector('h1');
   if (heading) setTimeout(() => heading.focus(), 100);
@@ -429,22 +395,5 @@ ndTheme.mount(document.getElementById('theme-toggle'));
 nd.onThemeChange(() => { if (!dashboard.hidden) loadData(currentDays); });
 
 // --- Init ---
-async function init() {
-  const session = await getSession();
-  if (session) {
-    showDashboard();
-  } else {
-    showLogin();
-  }
-}
-
-// Lytt på auth-endringer (f.eks. etter redirect)
-sb.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_IN' && session) {
-    showDashboard();
-  } else if (event === 'SIGNED_OUT') {
-    showLogin();
-  }
-});
-
-init();
+// Cloudflare Access guards the page (server.mjs checks its token), so show the dashboard straight away.
+showDashboard();

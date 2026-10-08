@@ -1,4 +1,4 @@
-import { sb } from './auth.js';
+import { getJson } from './api.js';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 time
 const CACHE_PREFIX = 'energy_v3_';
@@ -79,26 +79,8 @@ async function fetchSingleHome(days, homeId) {
   since.setMinutes(0, 0, 0);
   since.setDate(since.getDate() - days);
 
-  const all = [];
-  const pageSize = 1000;
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await sb
-      .from('consumption')
-      .select('timestamp, consumption_kwh, outside_temp_c')
-      .eq('home_id', homeId)
-      .gte('timestamp', since.toISOString())
-      .order('timestamp', { ascending: true })
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-
-    all.push(...data);
-    if (data.length < pageSize) break;
-    from += pageSize;
-  }
+  const params = new URLSearchParams({ home: homeId, since: since.toISOString() });
+  const all = await getJson(`/api/consumption?${params}`);
 
   setCache(days, homeId, all);
   return all;
@@ -106,7 +88,7 @@ async function fetchSingleHome(days, homeId) {
 
 export async function fetchData(days, homeId = 'all') {
   if (homeId === 'all') {
-    const { data: homes } = await sb.from('homes').select('id').order('sort_order');
+    const homes = await getJson('/api/homes');
     if (!homes || homes.length === 0) return [];
     const perHome = await Promise.all(homes.map(h => fetchSingleHome(days, h.id)));
     return mergeHomes(perHome.flat());
