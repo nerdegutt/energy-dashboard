@@ -65,32 +65,37 @@
       </div>
 
       <section class="nd-chart nd-chart--wide" id="cumulative-panel" aria-labelledby="cumulative-title">
-        <div class="nd-chart-header"><h2 class="nd-chart-title" id="cumulative-title">Strømstøtte – kumulativt forbruk</h2><p class="nd-freshness">kWh denne måneden mot 5000 kWh</p></div>
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="cumulative-title">Strømstøtte – kumulativt forbruk</h2><p class="nd-freshness" id="cumulative-note">kWh denne måneden mot 5000 kWh</p></div>
         <div id="cumulative-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Kumulativ graf over strømforbruk denne måneden mot 5000 kWh-grensen"></div>
         <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="cumulative-table">Vis datatabell</button></div>
         <div class="nd-datatable" id="cumulative-table" hidden tabindex="0"></div>
       </section>
       <section class="nd-chart nd-chart--wide" id="forecast-panel" aria-labelledby="forecast-title">
-        <div class="nd-chart-header"><h2 class="nd-chart-title" id="forecast-title">Forbruksprognose</h2><p class="nd-freshness">7 dager tilbake, 21 fremover</p></div>
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="forecast-title">Forbruksprognose</h2><p class="nd-freshness" id="forecast-note">7 dager tilbake, 21 fremover</p></div>
         <div id="forecast-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Forbruksprognose: 7 dager tilbake og 21 dager fremover med usikkerhetsintervall"></div>
         <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="forecast-table">Vis datatabell</button></div>
         <div class="nd-datatable" id="forecast-table" hidden tabindex="0"></div>
       </section>
       <section class="nd-chart nd-chart--wide" aria-labelledby="scatter-title">
-        <div class="nd-chart-header"><h2 class="nd-chart-title" id="scatter-title">Temperatur og forbruk</h2><p class="nd-freshness">punkter med regresjonslinjer</p></div>
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="scatter-title">Temperatur og forbruk</h2><p class="nd-freshness" id="scatter-note">punkter med regresjonslinjer</p></div>
         <div id="scatter-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Punktdiagram som viser sammenheng mellom temperatur og strømforbruk med regresjonslinjer"></div>
         <div id="regression-formulas"></div>
         <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="scatter-table">Vis datatabell</button></div>
         <div class="nd-datatable" id="scatter-table" hidden tabindex="0"></div>
       </section>
       <section class="nd-chart nd-chart--wide" aria-labelledby="yoy-title">
-        <div class="nd-chart-header"><h2 class="nd-chart-title" id="yoy-title">År mot år</h2><p class="nd-freshness">siste år mot forrige periode</p></div>
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="yoy-title">År mot år</h2><p class="nd-freshness" id="yoy-note">siste år mot forrige periode</p>
+          <div id="yoy-mode" class="nd-segmented" role="group" aria-label="Elbillading i sammenligningen" hidden>
+            <button type="button" data-house="0" aria-pressed="true">Hele måleren</button>
+            <button type="button" data-house="1" aria-pressed="false">Uten elbil</button>
+          </div>
+        </div>
         <div id="yoy-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 350px;" aria-label="Graf som sammenligner strømforbruk siste år med forrige periode"></div>
         <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="yoy-table">Vis datatabell</button></div>
         <div class="nd-datatable" id="yoy-table" hidden tabindex="0"></div>
       </section>
       <section class="nd-chart nd-chart--wide" aria-labelledby="monthly-change-title">
-        <div class="nd-chart-header"><h2 class="nd-chart-title" id="monthly-change-title">Endring per måned</h2><p class="nd-freshness">prosent mot året før</p></div>
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="monthly-change-title">Endring per måned</h2><p class="nd-freshness" id="monthly-change-note">prosent mot året før</p></div>
         <div id="monthly-change-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 280px;" aria-label="Stolpediagram som viser prosentvis endring i strømforbruk per måned sammenlignet med året før"></div>
         <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="monthly-change-table">Vis datatabell</button></div>
         <div class="nd-datatable" id="monthly-change-table" hidden tabindex="0"></div>
@@ -100,6 +105,12 @@
         <div id="monthly-total-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 320px;" aria-label="Gruppert stolpediagram som viser totalt strømforbruk per måned, gruppert etter år"></div>
         <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="monthly-total-table">Vis datatabell</button></div>
         <div class="nd-datatable" id="monthly-total-table" hidden tabindex="0"></div>
+      </section>
+      <section class="nd-chart nd-chart--wide" id="ev-monthly-panel" aria-labelledby="ev-monthly-title" hidden>
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="ev-monthly-title">Elbillading per måned</h2><p class="nd-freshness">kWh fra laderen; før 20. sep 2025 anslått fra ladeøktene</p></div>
+        <div id="ev-monthly-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 280px;" aria-label="Stolpediagram som viser elbillading per måned, eksakt og anslått"></div>
+        <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="ev-monthly-table">Vis datatabell</button></div>
+        <div class="nd-datatable" id="ev-monthly-table" hidden tabindex="0"></div>
       </section>
       <section class="nd-chart nd-chart--wide" aria-labelledby="heatmap-title">
         <div class="nd-chart-header"><h2 class="nd-chart-title" id="heatmap-title">Ukedag og klokketime</h2><p class="nd-freshness">snitt kWh</p></div>

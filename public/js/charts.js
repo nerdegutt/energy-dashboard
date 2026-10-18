@@ -74,7 +74,7 @@ function baseTooltip(overrides) {
 }
 
 // --- Gauge: Snitt for valgt periode ---
-export function renderGauge(data, days, deviation) {
+export function renderGauge(data, days, deviation, houseOnly) {
   const chart = getOrCreate('gauge-chart');
 
   const valid = data.filter((d) => d.consumption_kwh != null);
@@ -85,7 +85,7 @@ export function renderGauge(data, days, deviation) {
   const periodLabel = days >= 365 ? 'snitt 1 år' : days >= 28 ? 'snitt 28d' : days >= 7 ? 'snitt 7d' : 'snitt 24t';
 
   const deviationText = deviation != null
-    ? `${Math.abs(deviation).toFixed(0)}% ${deviation < 0 ? 'under' : 'over'} forventet`
+    ? `${Math.abs(deviation).toFixed(0)}% ${deviation < 0 ? 'under' : 'over'} ${houseOnly ? 'normalen for huset' : 'forventet'}`
     : null;
   const deviationColor = deviation != null
     ? (deviation < 0 ? GREEN : RED)
@@ -146,13 +146,14 @@ export function renderGauge(data, days, deviation) {
 }
 
 // --- Linjegraf: Forbruk + 24t rullende snitt ---
-export function renderLineChart(data, rollingAvg, days) {
+export function renderLineChart(data, rollingAvg, days, showEv) {
   const chart = getOrCreate('line-chart');
 
   const timestamps = data.map((d) => d.timestamp);
   const consumption = data.map((d) => d.consumption_kwh);
   const rolling = rollingAvg.map((d) => d.value);
   const temperature = data.map((d) => d.outside_temp_c);
+  const ev = data.map((d) => d.ev_kwh);
 
   const labelFormatter = (v) => {
     const d = new Date(v);
@@ -168,18 +169,21 @@ export function renderLineChart(data, rollingAvg, days) {
     if (days >= 365) label = `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
     else if (days >= 28) label = `${d.getDate()}.${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:00`;
     else label = `${d.getDate()}.${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:00`;
-    const lines = params.map((p) => {
+    const lines = params.filter((p) => p.value != null).map((p) => {
       const unit = p.seriesName === 'Temperatur' ? '°C' : 'kWh';
-      return `${p.marker} ${p.seriesName}: ${Number(p.value).toFixed(2)} ${unit}`;
+      const note = p.seriesName === 'Elbil' && data[p.dataIndex].ev_estimated ? ' (anslag)' : '';
+      return `${p.marker} ${p.seriesName}: ${Number(p.value).toFixed(2)} ${unit}${note}`;
     });
+    const house = data[params[0].dataIndex]?.house_kwh;
+    if (showEv && house != null) lines.splice(1, 0, `Hus: ${house.toFixed(2)} kWh`);
     return `${label}<br/>${lines.join('<br/>')}`;
   };
 
   chart.setOption({
-    aria: { enabled: true, label: { description: 'Linjegraf som viser strømforbruk, rullende snitt og temperatur over tid' } },
+    aria: { enabled: true, label: { description: `Linjegraf som viser strømforbruk${showEv ? ', elbillading' : ''}, rullende snitt og temperatur over tid` } },
     tooltip: baseTooltip({ trigger: 'axis', formatter: tooltipFormatter }),
     legend: {
-      data: ['Forbruk', days >= 365 ? '7d snitt' : '24t snitt', 'Temperatur'],
+      data: ['Forbruk', ...(showEv ? ['Elbil'] : []), days >= 365 ? '7d snitt' : '24t snitt', 'Temperatur'],
       textStyle: baseTextStyle(),
       top: 20,
     },
@@ -246,6 +250,16 @@ export function renderLineChart(data, rollingAvg, days) {
           ]),
         },
       },
+      ...(showEv ? [{
+        name: 'Elbil',
+        type: 'line',
+        data: ev,
+        step: days >= 365 ? false : 'middle',
+        symbol: 'none',
+        itemStyle: { color: TEAL },
+        lineStyle: { color: TEAL, width: 1 },
+        areaStyle: { color: alpha(TEAL, 0.35) },
+      }] : []),
       {
         name: days >= 365 ? '7d snitt' : '24t snitt',
         type: 'line',
@@ -640,6 +654,54 @@ export function renderYoyChart(yoyData) {
 }
 
 // --- Prosentvis endring per måned ---
+// --- Elbillading per måned: eksakt (Easee-timer) og anslått (fra ladeøkter) ---
+export function renderEvMonthlyChart(months) {
+  const chart = getOrCreate('ev-monthly-chart');
+  const label = (key) => {
+    const [y, m] = key.split('-');
+    return `${MONTHS_SHORT[parseInt(m) - 1]} ${y.slice(2)}`;
+  };
+  const bar = (name, field, color) => ({
+    name,
+    type: 'bar',
+    stack: 'ev',
+    data: months.map((d) => (d[field] > 0 ? Math.round(d[field]) : null)),
+    itemStyle: { color },
+    barMaxWidth: 30,
+  });
+
+  chart.setOption({
+    aria: { enabled: true, label: { description: 'Stolpediagram som viser elbillading i kWh per måned, eksakt og anslått' } },
+    tooltip: baseTooltip({
+      trigger: 'axis',
+      formatter: (params) => {
+        const lines = params.filter((p) => p.value != null)
+          .map((p) => `${p.marker} ${p.seriesName}: ${Number(p.value).toLocaleString('nb-NO')} kWh`);
+        return `${params[0].name}<br/>${lines.join('<br/>')}`;
+      },
+    }),
+    legend: { data: ['Eksakt', 'Anslag'], textStyle: baseTextStyle(), top: 20 },
+    grid: { left: 50, right: 20, top: 30, bottom: 30 },
+    xAxis: {
+      type: 'category',
+      data: months.map((d) => label(d.month)),
+      axisLine: baseAxisLine(),
+      axisLabel: { ...baseTextStyle(), hideOverlap: true },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'kWh',
+      nameTextStyle: baseTextStyle(),
+      axisLine: baseAxisLine(),
+      axisLabel: baseTextStyle(),
+      splitLine: baseSplitLine(),
+    },
+    series: [bar('Eksakt', 'exact', TEAL), bar('Anslag', 'estimated', alpha(TEAL, 0.4))],
+  });
+
+  return chart;
+}
+
 export function renderMonthlyChangeChart(monthlyChange) {
   const chart = getOrCreate('monthly-change-chart');
 

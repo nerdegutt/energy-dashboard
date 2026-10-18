@@ -36,9 +36,11 @@ server.mjs (Dokploy-appen energy, port 3000)
   ├─ planlagt innsamling: rett etter oppstart og hver time kl. hh:10 (UTC) → lib/collect.mjs
   │     ↓ Tibber GraphQL (siste 72 t, selvhelende) + Frost (met.no, temperatur per stasjon)
   │     ↓ upsert i databasen `energy` (erlend-postgres)
-  ├─ GET /api/homes, /api/consumption?home=&since=  → leses av public/js
+  ├─ deretter Easee (lib/easee.mjs) og anslaget før laderens timeverdier (lib/ev-estimate.mjs)
+  ├─ GET /api/homes, /api/consumption?home=&since=  → leses av public/js (fra viewet energy_hourly)
   ├─ GET /api/forecast?lat=&lon=                     → met.no-prognose (lib/forecast.mjs)
   ├─ POST /api/collect[?hours=&home=]                → manuell kjøring/backfill (x-cron-secret)
+  ├─ POST /api/collect-ev[?hours=&backfill=1]        → Easee + anslag nå (x-cron-secret)
   └─ statiske filer fra public/
 ```
 
@@ -55,6 +57,7 @@ Cloudflare Access («Familien») står foran `energy.offline.no`; `lib/access.mj
 ├── lib/
 │   ├── collect.mjs          # Tibber + Frost → consumption
 │   ├── easee.mjs            # Easee (elbillader) → ev_charging, ev_sessions (bare lesing)
+│   ├── ev-estimate.mjs      # ladeøkter → ev_charging_estimate (timer før laderens timeverdier)
 │   ├── forecast.mjs         # met.no-prognose
 │   └── access.mjs           # Cloudflare Access-sjekk
 ├── db/postgres.sql          # Tabellene; kjøres ved hver oppstart (idempotent)
@@ -82,6 +85,18 @@ Tabellene står i `db/postgres.sql` (samme som på Supabase, uten RLS):
   (ingen rad = ukjent, ikke 0).
 - `ev_sessions` (`charger_id`, `id`, tilkoblet/frakoblet, `energy_kwh`, `charging_seconds`, første/siste
   strømoverføring, `complete`): alle ladeøkter fra første lading 15. okt 2024. Eneste kilde før timeverdiene.
+- `ev_charging_estimate` (samme nøkkel som `ev_charging`): anslått kWh per time for perioden med bare økter
+  (15. okt 2024 – 19. sep 2025), skrevet på nytt etter hver Easee-kjøring av `lib/ev-estimate.mjs`. Metode og
+  test mot fasit i README («Husforbruk og elbil»).
+- **Viewet `energy_hourly`** (`home_id`, `timestamp`, `consumption_kwh` = måleren, `house_kwh`, `ev_kwh`,
+  `ev_estimated`, `outside_temp_c`): eksakt `ev_charging`, ellers anslaget; `ev_kwh` = 0 før første økt og der ingen
+  lading er registrert, null etter laderens nyeste time (da er også `house_kwh` null). Hjem uten lader: `ev_kwh`
+  null, `house_kwh` = måleren. `/api/consumption` leser herfra. Nye eller endrede kolonner krever
+  `drop view … cascade` først (`h49_hourly` bygger på det).
+- **Viewet `h49_hourly`** for h49 (`../h49-dashboard/docs/views-draft.md`): `energy_hourly` for Hovedbygningen
+  uten `home_id`. `grant select … to h49` kjøres i `db/postgres.sql` bare hvis rollen finnes (Erlend lager den);
+  ny oppstart etter at rollen er laget gir tilgangen. Sidebygningen er holdt utenfor (leietakernes vaner).
+- Laderen knyttes til måleren med `chargers.home_id` (gjort for EHHTPUS8 → Hovedbygningen 18. okt 2026).
 - `numeric` leveres som JS-tall av serveren (`pg.types.setTypeParser(1700, Number)`), som frontenden forventer.
 
 ## Miljøvariabler (settes av Erlend i Dokploy, bare navn her)
@@ -96,6 +111,7 @@ CF_ACCESS_TEAM, CF_ACCESS_AUD  # Cloudflare Access; tomme på testadressen
 COLLECT_MINUTE          # valgfri, minutt over hver time (standard 10)
 EASEE_USERNAME, EASEE_PASSWORD  # valgfri: Easee-innlogging; uten dem hoppes ladedata over
 EASEE_HISTORY_FROM      # valgfri, start for første henting (standard 2024-10-01, da laderen kom)
+EASEE_CHARGER_IDS       # valgfri, kommaseparert (f.eks. EHHTPUS8): siste utvei hvis kontoen ikke finner laderen
 ```
 
 ## Innsamling (lib/collect.mjs)
@@ -116,12 +132,18 @@ EASEE_HISTORY_FROM      # valgfri, start for første henting (standard 2024-10-0
 ## Ladedata (lib/easee.mjs)
 
 - Kjøres i samme timekjøring som Tibber når `EASEE_USERNAME` er satt. Feil her gir også `/fail` på hjerteslaget.
-- Bare lesing: innlogging, laderlista, `lifetime-energy/{id}/hourly` og `sessions/charger/{id}/sessions`. Appen kaller
-  aldri styringsendepunktene (pause, start, strøm, omstart).
+- Bare lesing: innlogging, lader- og anleggslistene, `lifetime-energy/{id}/hourly` og
+  `sessions/charger/{id}/sessions`. Appen kaller aldri styringsendepunktene (pause, start, strøm, omstart).
 - Første kjøring for en lader (`backfilled_at` er null) henter alle timer måned for måned og alle økter fra
   `EASEE_HISTORY_FROM` (ca. 25 kall, 1–2 minutter). Senere: siste 48 timer og øktene for siste 14 dager.
   `POST /api/collect-ev?backfill=1` (med `x-cron-secret`) henter alt på nytt.
 - Timer, ikke økter, er grunnlaget for strøm: en økt kan vare i flere døgn (10.–17. okt 2026 var én økt).
+- **Hvilke ladere:** `GET /api/chargers` viser bare ladere kontoen eier eller administrerer. En vanlig anleggsbruker
+  får `[]` der (h49-test 18. okt 2026), men ser anlegget og kan lese laderen direkte. Er lista tom, hentes laderne
+  fra `GET /api/sites` → `GET /api/sites/{siteId}/chargers`, og til slutt fra `EASEE_CHARGER_IDS`. Finnes ingen
+  lader, gir kjøringen status 502 (`/fail`). Dokploy skal bruke en vanlig anleggsbruker, ikke eierkontoen.
+- Etter hver kjøring regner `lib/ev-estimate.mjs` ut anslaget på nytt (ca. 50 ms); resultatet står som `estimate`
+  i loggen (`{"hours":531,"kwh":2130.8}` 18. okt 2026).
 - Kontrollert 18. okt 2026 (tørrkjøring uten database): 9 448 timer, 2 810 kWh fra 19. sep 2025; 298 økter med
   4 905 kWh, som er laderens målerstand.
 
@@ -166,5 +188,8 @@ Bruk Claude-skillen `nerdesign` for tokens og markup.
 
 - Tibber-data kan ha hull for inneværende dag; prognosefunksjonene fyller hull med modellprediksjoner time for time.
 - Alle beregninger i nettleseren håndterer null i `consumption_kwh`.
-- Sesongmodellen beregnes fra siste års timedata (~8760 punkter) og brukes av alle prognosegrafer og gauge-avviket.
+- Sesongmodellen beregnes fra siste års timedata (~8760 punkter) **av husforbruket uten elbil** og brukes av alle
+  prognosegrafer og gauge-avviket. Der totalen teller (strømstøtte, månedsprognose), legges elbilens snitt per time
+  siste 28 døgn til konstantleddet (`coeffsMeter` i `app.js`).
+- «År mot år» og «Endring per måned» har bryteren «Hele måleren | Uten elbil» (bare for hjem med lader).
 - MAD-outlier-fjerning er robust mot de samme outlierne den fjerner; én iterasjon holder.

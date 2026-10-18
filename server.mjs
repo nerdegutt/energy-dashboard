@@ -2,14 +2,14 @@
 // Replaces the Vercel functions (api/), the browser's direct Supabase access and the cron-job.org job.
 //
 //   GET  /healthz                              200 when the database answers (Docker HEALTHCHECK)
-//   GET  /api/homes                            homes for the selector (id, name, sort_order, lat, lon)
-//   GET  /api/consumption?home=<id>&since=<ISO> hourly rows of one home from <since>, oldest first
+//   GET  /api/homes                            homes for the selector (id, name, sort_order, lat, lon, has_charger)
+//   GET  /api/consumption?home=<id>&since=<ISO> hourly rows of one home from <since>, oldest first (meter, house, car)
 //   GET  /api/forecast?lat=<lat>&lon=<lon>     temperature forecast from met.no
 //   POST /api/collect[?hours=&home=]           run the Tibber/Frost collector now (header x-cron-secret)
 //   POST /api/collect-ev[?hours=&backfill=1]   run the Easee charging collector now (header x-cron-secret)
 //
-// Everything except /healthz, /api/collect and /api/collect-ev requires a valid Cloudflare Access token once CF_ACCESS_TEAM and
-// CF_ACCESS_AUD are set (lib/access.mjs). Env: see AGENTS.md.
+// Everything except /healthz, /api/collect and /api/collect-ev requires a valid Cloudflare Access token once
+// CF_ACCESS_TEAM and CF_ACCESS_AUD are set (lib/access.mjs). Env: see AGENTS.md.
 
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
@@ -17,6 +17,7 @@ import { extname, join, normalize } from 'node:path';
 import pg from 'pg';
 import { collect } from './lib/collect.mjs';
 import { collectEv } from './lib/easee.mjs';
+import { estimateEv } from './lib/ev-estimate.mjs';
 import { forecast } from './lib/forecast.mjs';
 import { accessEnabled, accessUser } from './lib/access.mjs';
 
@@ -42,6 +43,20 @@ function heartbeat(ok, summary) {
     .catch((err) => console.warn('heartbeat:', err.message));
 }
 
+// Easee, then the estimate for the hours before the charger reported hourly values (it reads the meter and the
+// sessions, so it runs after both). Cheap (a year of rows), so it is simply redone every time.
+async function collectAndEstimateEv(opts) {
+  const result = await collectEv(db, opts);
+  try {
+    result.estimate = await estimateEv(db);
+  } catch (err) {
+    console.error('EV estimate failed:', err.message);
+    result.estimate = { error: err.message };
+    result.status = 502;
+  }
+  return result;
+}
+
 // The first Easee run fetches the full history (1–2 minutes), so the start-up run can still be going at hh:10.
 let collecting = false;
 
@@ -59,7 +74,7 @@ async function scheduledCollect() {
     const result = await collect(db);
     // EV charging from Easee (optional: only when EASEE_USERNAME is set). Its failure fails the heartbeat too.
     let ev = null;
-    if (process.env.EASEE_USERNAME) ev = await collectEv(db).catch((err) => ({ status: 502, error: err.message }));
+    if (process.env.EASEE_USERNAME) ev = await collectAndEstimateEv().catch((err) => ({ status: 502, error: err.message }));
     const summary = JSON.stringify(ev ? { ...result, ev } : result);
     console.log('collect:', summary);
     heartbeat(result.status === 200 && (!ev || ev.status === 200), summary);
@@ -134,7 +149,7 @@ async function handle(req, res) {
     const secret = process.env.CRON_SECRET;
     if (!secret || req.headers['x-cron-secret'] !== secret) return json(res, 401, { error: 'Unauthorized' });
     if (!process.env.EASEE_USERNAME) return json(res, 400, { error: 'EASEE_USERNAME not set' });
-    const { status, ...body } = await collectEv(db, { hours: parseInt(q.get('hours')) || 48, backfill: q.get('backfill') === '1' });
+    const { status, ...body } = await collectAndEstimateEv({ hours: parseInt(q.get('hours')) || 48, backfill: q.get('backfill') === '1' });
     return json(res, status, body);
   }
 
@@ -143,14 +158,15 @@ async function handle(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Method not allowed' });
 
   if (path === '/api/homes') {
-    const { rows } = await db.query('select id, name, sort_order, lat, lon from homes order by sort_order');
+    const { rows } = await db.query('select id, name, sort_order, lat, lon, exists (select from chargers c where c.home_id = homes.id) as has_charger from homes order by sort_order');
     return json(res, 200, rows);
   }
   if (path === '/api/consumption') {
     const since = new Date(q.get('since'));
     if (!q.get('home') || !q.get('since') || Number.isNaN(since.getTime())) throw httpError(400, 'home and since (ISO) are required');
     const { rows } = await db.query(
-      'select timestamp, consumption_kwh, outside_temp_c from consumption where home_id = $1 and timestamp >= $2 order by timestamp',
+      `select timestamp, consumption_kwh, outside_temp_c, house_kwh, ev_kwh, ev_estimated
+       from energy_hourly where home_id = $1 and timestamp >= $2 order by timestamp`,
       [q.get('home'), since]
     );
     return json(res, 200, rows);

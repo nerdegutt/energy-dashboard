@@ -1,5 +1,5 @@
 import { getJson } from './api.js';
-import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, monthlyTotals, robustSeasonalRegression, dayOfYear, consumptionDeviation, fetchForecast, historicalDailyTemps, monthlyProjection, forecastTimeline } from './data.js';
+import { fetchData, clearCache, fillMissingHours, rollingAverage, dailyAverage, yearOverYear, avgByWeekday, heatmapData, monthlyTotals, robustSeasonalRegression, dayOfYear, consumptionDeviation, fetchForecast, historicalDailyTemps, monthlyProjection, forecastTimeline, asHouse, evPerHour, evMonthly } from './data.js';
 import * as nd from '../nd/nd-echarts.js';
 import { ndTheme } from '../nd/nd-theme.js';
 import {
@@ -9,6 +9,7 @@ import {
   renderYoyChart,
   renderMonthlyChangeChart,
   renderMonthlyTotalChart,
+  renderEvMonthlyChart,
   renderHeatmap,
   renderWeekdayChart,
   renderCumulativeChart,
@@ -127,6 +128,46 @@ periodSelector.addEventListener('click', (e) => {
   loadData(days);
 });
 
+// --- År mot år: hele måleren eller uten elbil ---
+// Uten elbil viser om tiltak i huset har virket, uavhengig av hvor mye bilen ble ladet.
+const yoyMode = document.getElementById('yoy-mode');
+let yoyHouseOnly = false;
+let yoySource = [];
+
+function renderYoy() {
+  yoyMode.querySelectorAll('[data-house]').forEach((b) => {
+    b.setAttribute('aria-pressed', String((b.dataset.house === '1') === yoyHouseOnly));
+  });
+  document.getElementById('yoy-note').textContent = yoyHouseOnly
+    ? 'huset uten elbil, siste år mot forrige periode' : 'siste år mot forrige periode';
+  document.getElementById('monthly-change-note').textContent = yoyHouseOnly
+    ? 'huset uten elbil, prosent mot året før' : 'prosent mot året før';
+  const yoy = yearOverYear(yoyHouseOnly ? asHouse(yoySource) : yoySource, 365);
+  renderYoyChart(yoy);
+  renderMonthlyChangeChart(yoy.monthlyChange);
+
+  buildTable('yoy-chart',
+    ['Dato', 'Siste \u00e5r (kWh)', 'Forrige periode (kWh)'],
+    yoy.labels.map((label, i) => [
+      fmtTs(label + 'T00:00:00', true),
+      fmtKwh(yoy.current[i]),
+      fmtKwh(yoy.previous[i]),
+    ])
+  );
+  buildTable('monthly-change-chart',
+    ['M\u00e5ned', 'Endring (%)'],
+    yoy.monthlyChange.map((d) => [d.month, fmtPct(d.pct)])
+  );
+}
+
+yoyMode.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-house]');
+  if (!btn || (btn.dataset.house === '1') === yoyHouseOnly) return;
+  yoyHouseOnly = btn.dataset.house === '1';
+  renderYoy();
+  announce(yoyHouseOnly ? 'År mot år viser huset uten elbil' : 'År mot år viser hele måleren');
+});
+
 // --- App flow ---
 async function showDashboard() {
   dashboard.hidden = false;
@@ -157,6 +198,11 @@ async function loadData(days) {
     loading.hidden = true;
     chartsContainer.hidden = false;
 
+    // Hjem med elbillader: modellen og husgrafene bruker husforbruket (måler minus elbil), og bilen vises for seg.
+    const hasCharger = currentHomeId === 'all'
+      ? homesData.some(h => h.has_charger)
+      : !!homesData.find(h => h.id === currentHomeId)?.has_charger;
+
     const filled = days < 365 ? fillMissingHours(data, days) : data;
     const chartData = days >= 365 ? dailyAverage(data) : filled;
     const rolling = days <= 1 ? [] : rollingAverage(chartData, days >= 365 ? 7 : 24);
@@ -168,12 +214,12 @@ async function loadData(days) {
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
     const yoyDays = Math.ceil((Date.now() - twoYearsAgo.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const yoyData = await fetchData(yoyDays, currentHomeId);
-    const yoy = yearOverYear(yoyData, 365);
+    const houseYoy = asHouse(yoyData);
 
     // Regresjonsmodell (temp → kWh) – beregnes én gang, brukes av gauge + prognose
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const regressionPoints = yoyData
+    const regressionPoints = houseYoy
       .filter(d => new Date(d.timestamp) >= oneYearAgo && d.consumption_kwh != null && d.outside_temp_c != null)
       .map(d => {
         const dt = new Date(d.timestamp);
@@ -181,22 +227,26 @@ async function loadData(days) {
       });
 
     const coeffs = regressionPoints.length > 100 ? robustSeasonalRegression(regressionPoints) : null;
+    // Hele måleren (5000 kWh-grensen): huset etter modellen pluss elbilens snitt per time siste 28 døgn.
+    const evHourly = hasCharger ? evPerHour(yoyData) : 0;
+    const coeffsMeter = coeffs ? { ...coeffs, a: coeffs.a + evHourly } : null;
 
     let deviation = null;
     if (days <= 1 && coeffs) {
-      deviation = consumptionDeviation(data, coeffs);
+      deviation = consumptionDeviation(asHouse(data), coeffs);
     }
 
-    renderGauge(data, days, deviation);
-    renderLineChart(chartData, rolling, days);
+    renderGauge(data, days, deviation, hasCharger);
+    renderLineChart(chartData, rolling, days, hasCharger);
 
     // Linjegraf-tabell
     const isDaily = days >= 365;
     buildTable('line-chart',
-      ['Tidspunkt', 'Forbruk (kWh)', 'Rullende snitt', 'Temperatur (\u00b0C)'],
+      ['Tidspunkt', 'Forbruk (kWh)', ...(hasCharger ? ['Hus (kWh)', 'Elbil (kWh)'] : []), 'Rullende snitt', 'Temperatur (\u00b0C)'],
       chartData.map((d, i) => [
         fmtTs(d.timestamp, isDaily),
         fmtKwh(d.consumption_kwh),
+        ...(hasCharger ? [fmtKwh(d.house_kwh), fmtKwh(d.ev_kwh) + (d.ev_estimated && d.ev_kwh ? ' (anslag)' : '')] : []),
         fmtKwh(rolling[i]?.value),
         fmtTemp(d.outside_temp_c),
       ])
@@ -205,9 +255,12 @@ async function loadData(days) {
     const scatterPanel = document.getElementById('scatter-chart').closest('.nd-chart');
     if (days >= 365) {
       scatterPanel.hidden = false;
-      renderScatterChart(chartData, coeffs);
+      const scatterData = hasCharger ? asHouse(chartData) : chartData;
+      document.getElementById('scatter-note').textContent = hasCharger
+        ? 'huset uten elbil, med regresjonslinjer' : 'punkter med regresjonslinjer';
+      renderScatterChart(scatterData, coeffs);
       // Scatter-tabell
-      const scatterRows = chartData
+      const scatterRows = scatterData
         .filter((d) => d.consumption_kwh != null && d.outside_temp_c != null)
         .map((d) => [fmtTemp(d.outside_temp_c), fmtKwh(d.consumption_kwh)]);
       buildTable('scatter-chart', ['Temperatur (\u00b0C)', 'Forbruk (kWh)'], scatterRows);
@@ -215,24 +268,10 @@ async function loadData(days) {
       scatterPanel.hidden = true;
     }
 
-    renderYoyChart(yoy);
-    renderMonthlyChangeChart(yoy.monthlyChange);
-
-    // YoY-tabell
-    buildTable('yoy-chart',
-      ['Dato', 'Siste \u00e5r (kWh)', 'Forrige periode (kWh)'],
-      yoy.labels.map((label, i) => [
-        fmtTs(label + 'T00:00:00', true),
-        fmtKwh(yoy.current[i]),
-        fmtKwh(yoy.previous[i]),
-      ])
-    );
-
-    // Månedlig endring-tabell
-    buildTable('monthly-change-chart',
-      ['M\u00e5ned', 'Endring (%)'],
-      yoy.monthlyChange.map((d) => [d.month, fmtPct(d.pct)])
-    );
+    yoyMode.hidden = !hasCharger;
+    if (!hasCharger) yoyHouseOnly = false;
+    yoySource = yoyData;
+    renderYoy();
 
     // --- Prognose: kumulativ + forecast ---
     const cumulativePanel = document.getElementById('cumulative-panel');
@@ -256,13 +295,16 @@ async function loadData(days) {
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         const monthData = yoyData.filter(d => new Date(d.timestamp) >= monthStart);
-        const projResult = monthlyProjection(monthData, forecastData, histTemps, coeffs);
+        const projResult = monthlyProjection(monthData, forecastData, histTemps, coeffsMeter);
         const lastProj = projResult.projected.filter(v => v != null);
         if (lastProj.length > 0) projectedMonthTotal = lastProj[lastProj.length - 1];
 
         // Kumulativ strømstøtte-graf (kun individuelle hjem)
         if (currentHomeId !== 'all') {
           cumulativePanel.hidden = false;
+          document.getElementById('cumulative-note').textContent = hasCharger
+            ? `kWh denne måneden mot 5000 kWh, elbil ${(evHourly * 24).toLocaleString('nb-NO', { maximumFractionDigits: 1 })} kWh/døgn (snitt 28 d)`
+            : 'kWh denne måneden mot 5000 kWh';
           renderCumulativeChart(projResult);
           buildTable('cumulative-chart',
             ['Dato', 'Daglig (kWh)', 'Faktisk (kWh)', 'Prognose (kWh)', 'Høy (kWh)', 'Lav (kWh)'],
@@ -280,7 +322,9 @@ async function loadData(days) {
         }
 
         // Forbruksprognose-graf (alle moduser)
-        const timelineResult = forecastTimeline(yoyData, forecastData, histTemps, coeffs);
+        const timelineResult = forecastTimeline(hasCharger ? houseYoy : yoyData, forecastData, histTemps, coeffs);
+        document.getElementById('forecast-note').textContent = hasCharger
+          ? 'huset uten elbil, 7 dager tilbake, 21 fremover' : '7 dager tilbake, 21 fremover';
         forecastPanel.hidden = false;
         renderForecastChart(timelineResult);
         buildTable('forecast-chart',
@@ -329,6 +373,12 @@ async function loadData(days) {
       };
 
       const lines = [`12 mnd: ${Math.round(yearTotal).toLocaleString('nb-NO')} kWh ${fmtChange(yearTotal, prevYearTotal)}`];
+      if (hasCharger) {
+        const evYear = yoyData
+          .filter(d => d.ev_kwh != null && new Date(d.timestamp) >= oneYearAgo)
+          .reduce((s, d) => s + d.ev_kwh, 0);
+        lines.push(`herav elbil: ${Math.round(evYear).toLocaleString('nb-NO')} kWh`);
+      }
       if (projectedMonthTotal != null) {
         const lastYearMonth = yoyData.filter(d => {
           const t = new Date(d.timestamp);
@@ -354,6 +404,17 @@ async function loadData(days) {
         ...mt.years.map(y => mt.series[y][i] != null ? mt.series[y][i].toLocaleString('nb-NO') : '\u2013'),
       ])
     );
+
+    const evPanel = document.getElementById('ev-monthly-panel');
+    const evMonths = hasCharger ? evMonthly(mtData) : [];
+    evPanel.hidden = evMonths.length === 0;
+    if (evMonths.length > 0) {
+      renderEvMonthlyChart(evMonths);
+      buildTable('ev-monthly-chart',
+        ['M\u00e5ned', 'Eksakt (kWh)', 'Anslag (kWh)', 'Sum (kWh)'],
+        evMonths.map(m => [m.month, Math.round(m.exact).toString(), Math.round(m.estimated).toString(), Math.round(m.exact + m.estimated).toString()])
+      );
+    }
 
     const heatmapPanel = document.getElementById('heatmap-chart').closest('.nd-chart');
     const weekdayPanel = document.getElementById('weekday-chart').closest('.nd-chart');

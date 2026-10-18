@@ -1,12 +1,12 @@
 import { getJson } from './api.js';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 time
-const CACHE_PREFIX = 'energy_v3_';
+const CACHE_PREFIX = 'energy_v4_';
 
 // Rydd opp gamle cache-oppføringer
 try {
   for (const key of Object.keys(localStorage)) {
-    if (key.startsWith('energy_') && !key.startsWith('energy_v3_')) {
+    if (key.startsWith('energy_') && !key.startsWith(CACHE_PREFIX)) {
       localStorage.removeItem(key);
     }
   }
@@ -18,19 +18,22 @@ export function clearCache() {
   }
 }
 
-// Kompakt cache: [YYYYMMDDHH, kwh, temp] i stedet for fulle objekter
+// Kompakt cache: [YYYYMMDDHH, kwh, temp, hus, elbil, anslag] i stedet for fulle objekter
 function packRows(rows) {
   return rows.map(r => {
     const t = r.timestamp.replace(/[-T:]/g, '').slice(0, 10);
-    return [t, r.consumption_kwh, r.outside_temp_c];
+    return [t, r.consumption_kwh, r.outside_temp_c, r.house_kwh, r.ev_kwh, r.ev_estimated ? 1 : 0];
   });
 }
 
 function unpackRows(packed) {
-  return packed.map(([t, kwh, temp]) => ({
+  return packed.map(([t, kwh, temp, house, ev, est]) => ({
     timestamp: `${t.slice(0,4)}-${t.slice(4,6)}-${t.slice(6,8)}T${t.slice(8,10)}:00:00.000Z`,
     consumption_kwh: kwh,
     outside_temp_c: temp,
+    house_kwh: house,
+    ev_kwh: ev,
+    ev_estimated: est === 1,
   }));
 }
 
@@ -56,10 +59,15 @@ function mergeHomes(rows) {
   for (const r of rows) {
     const key = r.timestamp;
     if (!grouped.has(key)) {
-      grouped.set(key, { timestamp: key, kwh: [], temp: null });
+      grouped.set(key, { timestamp: key, kwh: [], house: 0, houseKnown: true, ev: null, est: false, temp: null });
     }
     const g = grouped.get(key);
     if (r.consumption_kwh != null) g.kwh.push(r.consumption_kwh);
+    // Huset er summen av husene, ukjent hvis ett av dem er ukjent. Elbil: summen av hjemmene med lader.
+    if (r.house_kwh != null) g.house += r.house_kwh;
+    else if (r.consumption_kwh != null) g.houseKnown = false;
+    if (r.ev_kwh != null) g.ev = (g.ev ?? 0) + r.ev_kwh;
+    g.est ||= !!r.ev_estimated;
     if (r.outside_temp_c != null && g.temp == null) g.temp = r.outside_temp_c;
   }
   return [...grouped.values()]
@@ -67,6 +75,9 @@ function mergeHomes(rows) {
       timestamp: g.timestamp,
       consumption_kwh: g.kwh.length > 0 ? g.kwh.reduce((s, v) => s + v, 0) : null,
       outside_temp_c: g.temp,
+      house_kwh: g.kwh.length > 0 && g.houseKnown ? g.house : null,
+      ev_kwh: g.ev,
+      ev_estimated: g.est,
     }))
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
@@ -125,6 +136,9 @@ export function fillMissingHours(data, days) {
         timestamp: cursor.toISOString(),
         consumption_kwh: null,
         outside_temp_c: null,
+        house_kwh: null,
+        ev_kwh: null,
+        ev_estimated: false,
       });
     }
     cursor.setHours(cursor.getHours() + 1);
@@ -159,11 +173,16 @@ export function dailyAverage(data) {
   return [...buckets.entries()].map(([day, rows]) => {
     const validKwh = rows.filter((r) => r.consumption_kwh != null);
     const validTemp = rows.filter((r) => r.outside_temp_c != null);
+    const validHouse = rows.filter((r) => r.house_kwh != null);
+    const validEv = rows.filter((r) => r.ev_kwh != null);
     return {
       timestamp: day + 'T12:00:00',
       consumption_kwh: validKwh.length > 0
         ? validKwh.reduce((s, r) => s + r.consumption_kwh, 0) / validKwh.length
         : null,
+      house_kwh: validHouse.length > 0 ? validHouse.reduce((s, r) => s + r.house_kwh, 0) / validHouse.length : null,
+      ev_kwh: validEv.length > 0 ? validEv.reduce((s, r) => s + r.ev_kwh, 0) / validEv.length : null,
+      ev_estimated: rows.some((r) => r.ev_estimated),
       outside_temp_c: validTemp.length > 0
         ? validTemp.reduce((s, r) => s + r.outside_temp_c, 0) / validTemp.length
         : null,
@@ -1008,4 +1027,35 @@ export function heatmapData(data) {
     }
   }
   return result;
+}
+
+// --- Hus og elbil ---
+
+// Samme rader med husforbruket (måler minus elbil) som forbruk, for modellen og husgrafene.
+export function asHouse(data) {
+  return data.map((d) => ({ ...d, consumption_kwh: d.house_kwh }));
+}
+
+// Snitt elbillading per time siste `days` døgn (timer der elbil er kjent). Legges til modellens konstantledd når
+// prognosen gjelder hele måleren (5000 kWh-grensen), siden modellen bare beskriver huset.
+export function evPerHour(data, days = 28) {
+  const since = Date.now() - days * 864e5;
+  const known = data.filter((d) => d.ev_kwh != null && new Date(d.timestamp).getTime() >= since);
+  return known.length > 0 ? known.reduce((s, d) => s + d.ev_kwh, 0) / known.length : 0;
+}
+
+// Elbillading per måned (lokal tid), eksakt og anslått hver for seg.
+export function evMonthly(data) {
+  const buckets = new Map();
+  for (const d of data) {
+    if (d.ev_kwh == null) continue;
+    const dt = new Date(d.timestamp);
+    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    if (!buckets.has(key)) buckets.set(key, { exact: 0, estimated: 0 });
+    buckets.get(key)[d.ev_estimated ? 'estimated' : 'exact'] += d.ev_kwh;
+  }
+  // Fra første måned med lading
+  const keys = [...buckets.keys()].sort();
+  const first = keys.findIndex((k) => buckets.get(k).exact + buckets.get(k).estimated > 0);
+  return keys.slice(Math.max(0, first)).map((k) => ({ month: k, ...buckets.get(k) }));
 }
