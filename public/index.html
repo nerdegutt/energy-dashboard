@@ -95,7 +95,12 @@
         <div class="nd-datatable" id="yoy-table" hidden tabindex="0"></div>
       </section>
       <section class="nd-chart nd-chart--wide" aria-labelledby="monthly-change-title">
-        <div class="nd-chart-header"><h2 class="nd-chart-title" id="monthly-change-title">Endring per måned</h2><p class="nd-freshness" id="monthly-change-note">prosent mot året før</p></div>
+        <div class="nd-chart-header"><h2 class="nd-chart-title" id="monthly-change-title">Endring per måned</h2><p class="nd-freshness" id="monthly-change-note">prosent mot året før</p>
+          <div id="change-mode" class="nd-segmented" role="group" aria-label="Elbillading i endringen per måned" hidden>
+            <button type="button" data-house="0" aria-pressed="true">Hele måleren</button>
+            <button type="button" data-house="1" aria-pressed="false">Uten elbil</button>
+          </div>
+        </div>
         <div id="monthly-change-chart" class="nd-chart-canvas" role="img" tabindex="0" style="--nd-chart-height: 280px;" aria-label="Stolpediagram som viser prosentvis endring i strømforbruk per måned sammenlignet med året før"></div>
         <div class="nd-chart-footer"><button type="button" class="nd-button nd-datatable-toggle" aria-expanded="false" aria-controls="monthly-change-table">Vis datatabell</button></div>
         <div class="nd-datatable" id="monthly-change-table" hidden tabindex="0"></div>

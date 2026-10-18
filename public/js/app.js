@@ -128,24 +128,23 @@ periodSelector.addEventListener('click', (e) => {
   loadData(days);
 });
 
-// --- År mot år: hele måleren eller uten elbil ---
+// --- År mot år og endring per måned: hele måleren eller uten elbil, hver med sin bryter ---
 // Uten elbil viser om tiltak i huset har virket, uavhengig av hvor mye bilen ble ladet.
-const yoyMode = document.getElementById('yoy-mode');
-let yoyHouseOnly = false;
 let yoySource = [];
+const houseOnly = { yoy: false, change: false };
+
+function syncModeButtons(group, on) {
+  group.querySelectorAll('[data-house]').forEach((b) => {
+    b.setAttribute('aria-pressed', String((b.dataset.house === '1') === on));
+  });
+}
 
 function renderYoy() {
-  yoyMode.querySelectorAll('[data-house]').forEach((b) => {
-    b.setAttribute('aria-pressed', String((b.dataset.house === '1') === yoyHouseOnly));
-  });
-  document.getElementById('yoy-note').textContent = yoyHouseOnly
+  syncModeButtons(document.getElementById('yoy-mode'), houseOnly.yoy);
+  document.getElementById('yoy-note').textContent = houseOnly.yoy
     ? 'huset uten elbil, siste år mot forrige periode' : 'siste år mot forrige periode';
-  document.getElementById('monthly-change-note').textContent = yoyHouseOnly
-    ? 'huset uten elbil, prosent mot året før' : 'prosent mot året før';
-  const yoy = yearOverYear(yoyHouseOnly ? asHouse(yoySource) : yoySource, 365);
+  const yoy = yearOverYear(houseOnly.yoy ? asHouse(yoySource) : yoySource, 365);
   renderYoyChart(yoy);
-  renderMonthlyChangeChart(yoy.monthlyChange);
-
   buildTable('yoy-chart',
     ['Dato', 'Siste \u00e5r (kWh)', 'Forrige periode (kWh)'],
     yoy.labels.map((label, i) => [
@@ -154,19 +153,31 @@ function renderYoy() {
       fmtKwh(yoy.previous[i]),
     ])
   );
+}
+
+function renderMonthlyChange() {
+  syncModeButtons(document.getElementById('change-mode'), houseOnly.change);
+  document.getElementById('monthly-change-note').textContent = houseOnly.change
+    ? 'huset uten elbil, prosent mot året før' : 'prosent mot året før';
+  const { monthlyChange } = yearOverYear(houseOnly.change ? asHouse(yoySource) : yoySource, 365);
+  renderMonthlyChangeChart(monthlyChange);
   buildTable('monthly-change-chart',
     ['M\u00e5ned', 'Endring (%)'],
-    yoy.monthlyChange.map((d) => [d.month, fmtPct(d.pct)])
+    monthlyChange.map((d) => [d.month, fmtPct(d.pct)])
   );
 }
 
-yoyMode.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-house]');
-  if (!btn || (btn.dataset.house === '1') === yoyHouseOnly) return;
-  yoyHouseOnly = btn.dataset.house === '1';
-  renderYoy();
-  announce(yoyHouseOnly ? 'År mot år viser huset uten elbil' : 'År mot år viser hele måleren');
-});
+function wireModeToggle(id, key, render, label) {
+  document.getElementById(id).addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-house]');
+    if (!btn || (btn.dataset.house === '1') === houseOnly[key]) return;
+    houseOnly[key] = btn.dataset.house === '1';
+    render();
+    announce(`${label} viser ${houseOnly[key] ? 'huset uten elbil' : 'hele måleren'}`);
+  });
+}
+wireModeToggle('yoy-mode', 'yoy', renderYoy, 'År mot år');
+wireModeToggle('change-mode', 'change', renderMonthlyChange, 'Endring per måned');
 
 // --- App flow ---
 async function showDashboard() {
@@ -268,10 +279,11 @@ async function loadData(days) {
       scatterPanel.hidden = true;
     }
 
-    yoyMode.hidden = !hasCharger;
-    if (!hasCharger) yoyHouseOnly = false;
+    for (const id of ['yoy-mode', 'change-mode']) document.getElementById(id).hidden = !hasCharger;
+    if (!hasCharger) houseOnly.yoy = houseOnly.change = false;
     yoySource = yoyData;
     renderYoy();
+    renderMonthlyChange();
 
     // --- Prognose: kumulativ + forecast ---
     const cumulativePanel = document.getElementById('cumulative-panel');

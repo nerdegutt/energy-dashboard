@@ -191,5 +191,5 @@ Bruk Claude-skillen `nerdesign` for tokens og markup.
 - Sesongmodellen beregnes fra siste års timedata (~8760 punkter) **av husforbruket uten elbil** og brukes av alle
   prognosegrafer og gauge-avviket. Der totalen teller (strømstøtte, månedsprognose), legges elbilens snitt per time
   siste 28 døgn til konstantleddet (`coeffsMeter` i `app.js`).
-- «År mot år» og «Endring per måned» har bryteren «Hele måleren | Uten elbil» (bare for hjem med lader).
+- «År mot år» og «Endring per måned» har hver sin bryter «Hele måleren | Uten elbil» (bare for hjem med lader).
 - MAD-outlier-fjerning er robust mot de samme outlierne den fjerner; én iterasjon holder.

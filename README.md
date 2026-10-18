@@ -13,8 +13,8 @@ Støtter flere hjem (Tibber homes) med individuell temperaturstasjon og koordina
 - **Linjegraf** med forbruk, rullende snitt og utetemperatur (dual y-akse)
 - **Kumulativ strømstøtte** (kun individuelle hjem): kumulativt forbruk denne måneden med projisert total mot 5000 kWh-grensen, basert på temperaturprognose
 - **Forbruksprognose**: 7 dager tilbake + 21 dager fremover med usikkerhetsbånd, basert på met.no-prognose
-- **År-over-år sammenligning** med sentrert rullende snitt (±7 dager) og rød/grønn fyll som viser om forbruket har gått opp eller ned. For hjem med elbillader kan elbilen skrus av («Uten elbil»), så man ser om tiltak i huset har virket; det gjelder også månedlig endring
-- **Månedlig endring** i prosent sammenlignet med tilsvarende måned året før
+- **År-over-år sammenligning** med sentrert rullende snitt (±7 dager) og rød/grønn fyll som viser om forbruket har gått opp eller ned. For hjem med elbillader kan elbilen skrus av («Uten elbil»), så man ser om tiltak i huset har virket
+- **Månedlig endring** i prosent sammenlignet med tilsvarende måned året før, med egen «Uten elbil»-bryter
 - **Månedlig totalforbruk** per år som gruppert stolpediagram (jan–des, maks 2 foregående år + inneværende) med projisert rest for inneværende måned
 - **Elbillading per måned** (hjem med lader): eksakt fra laderens timeverdier, anslått fra ladeøktene før de fantes
 
