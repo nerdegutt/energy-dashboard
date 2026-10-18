@@ -141,7 +141,9 @@ EASEE_CHARGER_IDS       # valgfri, kommaseparert (f.eks. EHHTPUS8): siste utvei 
 - **Hvilke ladere:** `GET /api/chargers` viser bare ladere kontoen eier eller administrerer. En vanlig anleggsbruker
   får `[]` der (h49-test 18. okt 2026), men ser anlegget og kan lese laderen direkte. Er lista tom, hentes laderne
   fra `GET /api/sites` → `GET /api/sites/{siteId}/chargers`, og til slutt fra `EASEE_CHARGER_IDS`. Finnes ingen
-  lader, gir kjøringen status 502 (`/fail`). Dokploy skal bruke en vanlig anleggsbruker, ikke eierkontoen.
+  lader, gir kjøringen status 502 (`/fail`). Dokploy bruker en vanlig anleggsbruker, ikke eierkontoen. Den får 403
+  på anleggets laderliste (18. okt 2026), så for den er **`EASEE_CHARGER_IDS=EHHTPUS8` påkrevd**; feil i
+  anleggsveien logges bare som advarsel.
 - Etter hver kjøring regner `lib/ev-estimate.mjs` ut anslaget på nytt (ca. 50 ms); resultatet står som `estimate`
   i loggen (`{"hours":531,"kwh":2130.8}` 18. okt 2026).
 - Kontrollert 18. okt 2026 (tørrkjøring uten database): 9 448 timer, 2 810 kWh fra 19. sep 2025; 298 økter med
