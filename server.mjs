@@ -229,7 +229,7 @@ createServer((req, res) => {
     else res.end();
   });
 }).listen(PORT, () => {
-  console.log(`energy listening on :${PORT}, Cloudflare Access ${accessEnabled ? 'ON' : 'off (test address only)'}`);
+  console.log(`energy listening on :${PORT}, Cloudflare Access ${accessEnabled ? 'ON' : 'off (local only)'}`);
 });
 // One run shortly after start-up (it fetches the last 72 hours, so nothing missed while down is lost), then hourly.
 setTimeout(scheduledCollect, 60 * 1000);

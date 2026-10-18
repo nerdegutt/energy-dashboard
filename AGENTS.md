@@ -45,8 +45,11 @@ server.mjs (Dokploy-appen energy, port 3000)
 ```
 
 Cloudflare Access («Familien») står foran `energy.offline.no`; `lib/access.mjs` sjekker Access-tokenet på alt unntatt
-`/healthz`, `/api/collect` og `/api/collect-ev` når `CF_ACCESS_TEAM` og `CF_ACCESS_AUD` er satt. Uten dem (testadressen
-`http://energy.192.168.50.10.sslip.io`, bare hjemmenett og VPN) er det ingen innlogging. «Logg ut» lenker til
+`/healthz`, `/api/collect` og `/api/collect-ev` når `CF_ACCESS_TEAM` og `CF_ACCESS_AUD` er satt (det er de i Dokploy).
+Uten dem er det ingen innlogging (lokalt). Testadressen `http://energy.192.168.50.10.sslip.io` (bare hjemmenett og VPN)
+er samme app med samme miljøvariabler, men uten Cloudflare foran, så der kommer aldri et Access-token: dashbordet og
+API-et svarer 403, mens `/healthz` og backfill med `x-cron-secret` virker. Dashbordet brukes på `energy.offline.no`.
+«Logg ut» lenker til
 `/cdn-cgi/access/logout`. Den gamle Supabase-innloggingen er fjernet.
 
 ## Filstruktur
@@ -108,7 +111,7 @@ FROST_CLIENT_ID         # fra frost.met.no
 HEALTHCHECK_ENERGY_URL  # ping-adresse på healthchecks.io (HC_PING_ENERGY i m920q/.env)
 HEALTHCHECK_EASEE_URL   # valgfri: ping-adresse for Easee-delen (sjekken «Energy – elbillading»)
 CRON_SECRET             # valgfri: tillater POST /api/collect (backfill)
-CF_ACCESS_TEAM, CF_ACCESS_AUD  # Cloudflare Access; tomme på testadressen
+CF_ACCESS_TEAM, CF_ACCESS_AUD  # Cloudflare Access; tomme bare lokalt
 COLLECT_MINUTE          # valgfri, minutt over hver time (standard 10)
 EASEE_USERNAME, EASEE_PASSWORD  # valgfri: Easee-innlogging; uten dem hoppes ladedata over
 EASEE_HISTORY_FROM      # valgfri, start for første henting (standard 2024-10-01, da laderen kom)
