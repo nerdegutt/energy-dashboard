@@ -113,6 +113,8 @@ create or replace view h49_hourly as
 do $$
 begin
   if exists (select from pg_roles where rolname = 'h49') then
+    execute format('grant connect on database %I to h49', current_database());
+    grant usage on schema public to h49;
     grant select on h49_hourly to h49;
   end if;
 end $$;
