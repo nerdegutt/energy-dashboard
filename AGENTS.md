@@ -54,6 +54,7 @@ Cloudflare Access («Familien») står foran `energy.offline.no`; `lib/access.mj
 ├── server.mjs               # HTTP-server, API, planlagt innsamling, hjerteslag
 ├── lib/
 │   ├── collect.mjs          # Tibber + Frost → consumption
+│   ├── easee.mjs            # Easee (elbillader) → ev_charging, ev_sessions (bare lesing)
 │   ├── forecast.mjs         # met.no-prognose
 │   └── access.mjs           # Cloudflare Access-sjekk
 ├── db/postgres.sql          # Tabellene; kjøres ved hver oppstart (idempotent)
@@ -75,6 +76,12 @@ Tabellene står i `db/postgres.sql` (samme som på Supabase, uten RLS):
 - `consumption_kwh` kan være NULL (Tibber har ikke aggregert de siste timene ennå).
 - Hjem legges inn og endres direkte i `homes` (`psql` i containeren, som `energy`-brukeren). `collect_enabled = false`
   får innsamlingen til å hoppe over hjemmet (f.eks. utleid sidebygning); data og hjemvalg beholdes.
+- `chargers` (`id` = Easee-laderens serienummer, `name`, `home_id` (settes for hånd), `backfilled_at`)
+- `ev_charging` (`charger_id`, `timestamp`, `energy_kwh`; nøkkel `charger_id, timestamp`): kWh per lader per time,
+  eksakt fra Easee. For EHHTPUS8 «Garasje» finnes timeverdier fra 19. sep 2025; ledende nulltimer lagres ikke
+  (ingen rad = ukjent, ikke 0).
+- `ev_sessions` (`charger_id`, `id`, tilkoblet/frakoblet, `energy_kwh`, `charging_seconds`, første/siste
+  strømoverføring, `complete`): alle ladeøkter fra første lading 15. okt 2024. Eneste kilde før timeverdiene.
 - `numeric` leveres som JS-tall av serveren (`pg.types.setTypeParser(1700, Number)`), som frontenden forventer.
 
 ## Miljøvariabler (settes av Erlend i Dokploy, bare navn her)
@@ -87,6 +94,8 @@ HEALTHCHECK_ENERGY_URL  # ping-adresse på healthchecks.io (HC_PING_ENERGY i m92
 CRON_SECRET             # valgfri: tillater POST /api/collect (backfill)
 CF_ACCESS_TEAM, CF_ACCESS_AUD  # Cloudflare Access; tomme på testadressen
 COLLECT_MINUTE          # valgfri, minutt over hver time (standard 10)
+EASEE_USERNAME, EASEE_PASSWORD  # valgfri: Easee-innlogging; uten dem hoppes ladedata over
+EASEE_HISTORY_FROM      # valgfri, start for første henting (standard 2024-10-01, da laderen kom)
 ```
 
 ## Innsamling (lib/collect.mjs)
@@ -103,6 +112,18 @@ COLLECT_MINUTE          # valgfri, minutt over hver time (standard 10)
 - Frost: `https://frost.met.no/observations/v0.jsonld`, Basic auth med `FROST_CLIENT_ID` og tomt passord, krever
   `User-Agent`. Frost-feil stopper ikke innsamlingen – temperaturen blir null. Hentes én gang per unik stasjon.
 - Upsert i bolker à 1000 rader på `home_id, timestamp`; idempotent.
+
+## Ladedata (lib/easee.mjs)
+
+- Kjøres i samme timekjøring som Tibber når `EASEE_USERNAME` er satt. Feil her gir også `/fail` på hjerteslaget.
+- Bare lesing: innlogging, laderlista, `lifetime-energy/{id}/hourly` og `sessions/charger/{id}/sessions`. Appen kaller
+  aldri styringsendepunktene (pause, start, strøm, omstart).
+- Første kjøring for en lader (`backfilled_at` er null) henter alle timer måned for måned og alle økter fra
+  `EASEE_HISTORY_FROM` (ca. 25 kall, 1–2 minutter). Senere: siste 48 timer og øktene for siste 14 dager.
+  `POST /api/collect-ev?backfill=1` (med `x-cron-secret`) henter alt på nytt.
+- Timer, ikke økter, er grunnlaget for strøm: en økt kan vare i flere døgn (10.–17. okt 2026 var én økt).
+- Kontrollert 18. okt 2026 (tørrkjøring uten database): 9 448 timer, 2 810 kWh fra 19. sep 2025; 298 økter med
+  4 905 kWh, som er laderens målerstand.
 
 ## /api/forecast
 

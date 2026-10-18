@@ -6,6 +6,7 @@
 //   GET  /api/consumption?home=<id>&since=<ISO> hourly rows of one home from <since>, oldest first
 //   GET  /api/forecast?lat=<lat>&lon=<lon>     temperature forecast from met.no
 //   POST /api/collect[?hours=&home=]           run the Tibber/Frost collector now (header x-cron-secret)
+//   POST /api/collect-ev[?hours=&backfill=1]   run the Easee charging collector now (header x-cron-secret)
 //
 // Everything except /healthz and /api/collect requires a valid Cloudflare Access token once CF_ACCESS_TEAM and
 // CF_ACCESS_AUD are set (lib/access.mjs). Env: see AGENTS.md.
@@ -15,6 +16,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import pg from 'pg';
 import { collect } from './lib/collect.mjs';
+import { collectEv } from './lib/easee.mjs';
 import { forecast } from './lib/forecast.mjs';
 import { accessEnabled, accessUser } from './lib/access.mjs';
 
@@ -47,9 +49,12 @@ async function scheduledCollect() {
   }
   try {
     const result = await collect(db);
-    const summary = JSON.stringify(result);
+    // EV charging from Easee (optional: only when EASEE_USERNAME is set). Its failure fails the heartbeat too.
+    let ev = null;
+    if (process.env.EASEE_USERNAME) ev = await collectEv(db).catch((err) => ({ status: 502, error: err.message }));
+    const summary = JSON.stringify(ev ? { ...result, ev } : result);
     console.log('collect:', summary);
-    heartbeat(result.status === 200, summary);
+    heartbeat(result.status === 200 && (!ev || ev.status === 200), summary);
   } catch (err) {
     console.error('collect error:', err.message);
     heartbeat(false, `collect error: ${err.message}`);
@@ -113,6 +118,13 @@ async function handle(req, res) {
     const secret = process.env.CRON_SECRET;
     if (!secret || req.headers['x-cron-secret'] !== secret) return json(res, 401, { error: 'Unauthorized' });
     const { status, ...body } = await collect(db, { hours: parseInt(q.get('hours')) || 72, homeId: q.get('home') });
+    return json(res, status, body);
+  }
+  if (path === '/api/collect-ev' && req.method === 'POST') {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || req.headers['x-cron-secret'] !== secret) return json(res, 401, { error: 'Unauthorized' });
+    if (!process.env.EASEE_USERNAME) return json(res, 400, { error: 'EASEE_USERNAME not set' });
+    const { status, ...body } = await collectEv(db, { hours: parseInt(q.get('hours')) || 48, backfill: q.get('backfill') === '1' });
     return json(res, status, body);
   }
 
