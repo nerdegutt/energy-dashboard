@@ -8,7 +8,7 @@
 //   POST /api/collect[?hours=&home=]           run the Tibber/Frost collector now (header x-cron-secret)
 //   POST /api/collect-ev[?hours=&backfill=1]   run the Easee charging collector now (header x-cron-secret)
 //
-// Everything except /healthz and /api/collect requires a valid Cloudflare Access token once CF_ACCESS_TEAM and
+// Everything except /healthz, /api/collect and /api/collect-ev requires a valid Cloudflare Access token once CF_ACCESS_TEAM and
 // CF_ACCESS_AUD are set (lib/access.mjs). Env: see AGENTS.md.
 
 import { createServer } from 'node:http';
@@ -42,11 +42,19 @@ function heartbeat(ok, summary) {
     .catch((err) => console.warn('heartbeat:', err.message));
 }
 
+// The first Easee run fetches the full history (1–2 minutes), so the start-up run can still be going at hh:10.
+let collecting = false;
+
 async function scheduledCollect() {
   if (!process.env.TIBBER_API_TOKEN) {
     console.warn('collect: TIBBER_API_TOKEN not set, skipping');
     return;
   }
+  if (collecting) {
+    console.warn('collect: previous run still going, skipping');
+    return;
+  }
+  collecting = true;
   try {
     const result = await collect(db);
     // EV charging from Easee (optional: only when EASEE_USERNAME is set). Its failure fails the heartbeat too.
@@ -58,6 +66,8 @@ async function scheduledCollect() {
   } catch (err) {
     console.error('collect error:', err.message);
     heartbeat(false, `collect error: ${err.message}`);
+  } finally {
+    collecting = false;
   }
 }
 

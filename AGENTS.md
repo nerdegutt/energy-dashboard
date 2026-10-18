@@ -43,7 +43,7 @@ server.mjs (Dokploy-appen energy, port 3000)
 ```
 
 Cloudflare Access («Familien») står foran `energy.offline.no`; `lib/access.mjs` sjekker Access-tokenet på alt unntatt
-`/healthz` og `/api/collect` når `CF_ACCESS_TEAM` og `CF_ACCESS_AUD` er satt. Uten dem (testadressen
+`/healthz`, `/api/collect` og `/api/collect-ev` når `CF_ACCESS_TEAM` og `CF_ACCESS_AUD` er satt. Uten dem (testadressen
 `http://energy.192.168.50.10.sslip.io`, bare hjemmenett og VPN) er det ingen innlogging. «Logg ut» lenker til
 `/cdn-cgi/access/logout`. Den gamle Supabase-innloggingen er fjernet.
 

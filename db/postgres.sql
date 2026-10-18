@@ -43,7 +43,7 @@ create index if not exists idx_ev_charging_timestamp on ev_charging (timestamp);
 -- energy went is only bounded by first/last transfer and charging_seconds.
 create table if not exists ev_sessions (
   charger_id       text not null references chargers(id),
-  id               int not null,              -- Easee's session id (per charger)
+  id               bigint not null,           -- Easee's session id
   car_connected    timestamptz,
   car_disconnected timestamptz,
   energy_kwh       numeric,
