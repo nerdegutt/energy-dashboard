@@ -39,6 +39,7 @@ kWh = a + b·T + c·T² + d·sin(2π·doy/365) + e·cos(2π·doy/365)
 ```
 server.mjs (Node, Docker, Dokploy)
   ├─ innsamling hver time (Tibber siste 72 t + Frost-temperatur) → PostgreSQL
+  ├─ ladedata fra Easee hver time (kWh per time og ladeøkter, bare lesing) → PostgreSQL
   ├─ /api/homes, /api/consumption → frontend
   ├─ /api/forecast → temperaturprognose fra met.no
   └─ public/ (HTML + vanilla JS + ECharts + Nerdesign)
@@ -56,6 +57,7 @@ innsamlingen feiler eller stopper.
 | Database | PostgreSQL 18 |
 | Innlogging | Cloudflare Access |
 | Strømdata | Tibber GraphQL API |
+| Elbillading | Easee API (valgfritt; kWh per time og økter) |
 | Temperatur (historisk) | Frost API (met.no, konfigurerbar stasjon per hjem) |
 | Temperatur (prognose) | met.no Locationforecast + Subseasonal |
 | Grafer | ECharts (CDN) |
@@ -76,6 +78,8 @@ INSERT INTO homes (id, name, sort_order, lat, lon, frost_station) VALUES
 ```
 
 5. Backfill historikk fra Tibber: `curl -X POST "<adresse>/api/collect?hours=100000" -H "x-cron-secret: <CRON_SECRET>"`.
+6. Valgfritt, elbillader: sett `EASEE_USERNAME` og `EASEE_PASSWORD`. Første kjøring henter hele historikken selv
+   (timer og økter fra `EASEE_HISTORY_FROM`, standard 2024-10-01); siden hver time sammen med Tibber.
 
 ## Vibe-kodet
 
