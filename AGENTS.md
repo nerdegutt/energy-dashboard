@@ -111,7 +111,7 @@ CF_ACCESS_TEAM, CF_ACCESS_AUD  # Cloudflare Access; tomme på testadressen
 COLLECT_MINUTE          # valgfri, minutt over hver time (standard 10)
 EASEE_USERNAME, EASEE_PASSWORD  # valgfri: Easee-innlogging; uten dem hoppes ladedata over
 EASEE_HISTORY_FROM      # valgfri, start for første henting (standard 2024-10-01, da laderen kom)
-EASEE_CHARGER_IDS       # valgfri, kommaseparert (f.eks. EHHTPUS8): siste utvei hvis kontoen ikke finner laderen
+EASEE_CHARGER_IDS       # kommaseparert (EHHTPUS8): påkrevd for en vanlig anleggsbruker, som ikke får laderlista
 ```
 
 ## Innsamling (lib/collect.mjs)
@@ -139,11 +139,10 @@ EASEE_CHARGER_IDS       # valgfri, kommaseparert (f.eks. EHHTPUS8): siste utvei 
   `POST /api/collect-ev?backfill=1` (med `x-cron-secret`) henter alt på nytt.
 - Timer, ikke økter, er grunnlaget for strøm: en økt kan vare i flere døgn (10.–17. okt 2026 var én økt).
 - **Hvilke ladere:** `GET /api/chargers` viser bare ladere kontoen eier eller administrerer. En vanlig anleggsbruker
-  får `[]` der (h49-test 18. okt 2026), men ser anlegget og kan lese laderen direkte. Er lista tom, hentes laderne
-  fra `GET /api/sites` → `GET /api/sites/{siteId}/chargers`, og til slutt fra `EASEE_CHARGER_IDS`. Finnes ingen
-  lader, gir kjøringen status 502 (`/fail`). Dokploy bruker en vanlig anleggsbruker, ikke eierkontoen. Den får 403
-  på anleggets laderliste (18. okt 2026), så for den er **`EASEE_CHARGER_IDS=EHHTPUS8` påkrevd**; feil i
-  anleggsveien logges bare som advarsel.
+  får `[]` der (h49-test 18. okt 2026) og 403 på anleggets laderliste, men kan lese laderen direkte. Er lista tom,
+  brukes `EASEE_CHARGER_IDS`; er den ikke satt, prøves `GET /api/sites` → `GET /api/sites/{siteId}/chargers` (feil der
+  betyr bare «ingen»). Finnes ingen lader, gir kjøringen status 502 (`/fail`). Dokploy bruker en vanlig
+  anleggsbruker, ikke eierkontoen, så **`EASEE_CHARGER_IDS=EHHTPUS8` er påkrevd** (satt 18. okt 2026).
 - Etter hver kjøring regner `lib/ev-estimate.mjs` ut anslaget på nytt (ca. 50 ms); resultatet står som `estimate`
   i loggen (`{"hours":531,"kwh":2130.8}` 18. okt 2026).
 - Kontrollert 18. okt 2026 (tørrkjøring uten database): 9 448 timer, 2 810 kWh fra 19. sep 2025; 298 økter med
