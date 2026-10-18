@@ -65,7 +65,7 @@ server.mjs (Node, Docker, Dokploy)
 
 Ingen build step, ingen bundler, ingen React. Innloggingen gjøres av Cloudflare Access foran appen; serveren sjekker
 Access-tokenet. Ingen ekstern cron: appen samler inn selv og melder fra til healthchecks.io, som sender e-post hvis
-innsamlingen feiler eller stopper.
+innsamlingen feiler eller stopper. Strømmåleren (Tibber og Frost) og elbilladeren (Easee) har hver sin sjekk.
 
 ## Tech stack
 
@@ -98,7 +98,8 @@ INSERT INTO homes (id, name, sort_order, lat, lon, frost_station) VALUES
 5. Backfill historikk fra Tibber: `curl -X POST "<adresse>/api/collect?hours=100000" -H "x-cron-secret: <CRON_SECRET>"`.
 6. Valgfritt, elbillader: sett `EASEE_USERNAME` og `EASEE_PASSWORD` (en vanlig anleggsbruker holder; finner kontoen ikke
    laderen, sett `EASEE_CHARGER_IDS`). Første kjøring henter hele historikken selv
-   (timer og økter fra `EASEE_HISTORY_FROM`, standard 2024-10-01); siden hver time sammen med Tibber.
+   (timer og økter fra `EASEE_HISTORY_FROM`, standard 2024-10-01); siden hver time rett etter Tibber. Egen varsling med
+   `HEALTHCHECK_EASEE_URL`.
 7. Knytt laderen til måleren den står bak, så husforbruket kan skilles fra bilen:
    `UPDATE chargers SET home_id = '<TIBBER_HOME_ID>' WHERE id = '<laderens serienummer>';`
 

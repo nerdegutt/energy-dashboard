@@ -106,6 +106,7 @@ DATABASE_URL            # databasen energy (DATABASE_URL_ENERGY i m920q/.env)
 TIBBER_API_TOKEN        # fra developer.tibber.com
 FROST_CLIENT_ID         # fra frost.met.no
 HEALTHCHECK_ENERGY_URL  # ping-adresse på healthchecks.io (HC_PING_ENERGY i m920q/.env)
+HEALTHCHECK_EASEE_URL   # valgfri: ping-adresse for Easee-delen (sjekken «Energy – elbillading»)
 CRON_SECRET             # valgfri: tillater POST /api/collect (backfill)
 CF_ACCESS_TEAM, CF_ACCESS_AUD  # Cloudflare Access; tomme på testadressen
 COLLECT_MINUTE          # valgfri, minutt over hver time (standard 10)
@@ -122,7 +123,8 @@ EASEE_CHARGER_IDS       # kommaseparert (EHHTPUS8): påkrevd for en vanlig anleg
 - Henter hjem med `collect_enabled = true`. Feil for ett hjem stopper ikke de andre: vellykkede lagres, feilede listes
   i `failed` og gir status 502.
 - **Varsling:** etter hver kjøring pinger appen `HEALTHCHECK_ENERGY_URL` (healthchecks.io-sjekken «Energy –
-  innsamling»). Feil (også delvis) går til `/fail`, så Erlend får e-post med en gang; ingen ping på 90 min gir e-post.
+  innsamling», bare Tibber og Frost). Feil (også delvis) går til `/fail`, så Erlend får e-post med en gang; ingen ping
+  på 90 min gir e-post. Easee har sin egen sjekk (se «Ladedata»).
 - Tibber: GraphQL mot `https://api.tibber.com/v1-beta/gql`, `last: 72` som standard, `?hours=N` for backfill
   (over 744 t paginert med `first`/`after`), `?home=<id>` for ett hjem.
 - Frost: `https://frost.met.no/observations/v0.jsonld`, Basic auth med `FROST_CLIENT_ID` og tomt passord, krever
@@ -131,7 +133,10 @@ EASEE_CHARGER_IDS       # kommaseparert (EHHTPUS8): påkrevd for en vanlig anleg
 
 ## Ladedata (lib/easee.mjs)
 
-- Kjøres i samme timekjøring som Tibber når `EASEE_USERNAME` er satt. Feil her gir også `/fail` på hjerteslaget.
+- Kjøres hver time rett etter Tibber når `EASEE_USERNAME` er satt, uansett hvordan Tibber-delen gikk (anslaget leser
+  målerradene, derfor etter). Egen loggelinje `collect-ev:` og eget hjerteslag: `HEALTHCHECK_EASEE_URL`
+  (healthchecks.io-sjekken «Energy – elbillading», laget 18. okt 2026, periode 1 t, grace 90 min). Feil går til `/fail`;
+  uten variabelen logges resultatet bare.
 - Bare lesing: innlogging, lader- og anleggslistene, `lifetime-energy/{id}/hourly` og
   `sessions/charger/{id}/sessions`. Appen kaller aldri styringsendepunktene (pause, start, strøm, omstart).
 - Første kjøring for en lader (`backfilled_at` er null) henter alle timer måned for måned og alle økter fra

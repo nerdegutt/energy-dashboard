@@ -33,11 +33,11 @@ const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
 
 // --- Collector (replaces the cron-job.org job) --------------------------------------------------
 
-// Tells healthchecks.io how the run went (HEALTHCHECK_ENERGY_URL from Dokploy). A run with a failed home pings
-// /fail, so Erlend gets an e-mail at once; no pings at all (app down) alert after the grace period.
-// Fire and forget: a slow or failing monitor must never block or break the app.
-function heartbeat(ok, summary) {
-  const url = process.env.HEALTHCHECK_ENERGY_URL;
+// Tells healthchecks.io how a run went. Two checks: HEALTHCHECK_ENERGY_URL (Tibber + Frost, «Energy – innsamling»)
+// and HEALTHCHECK_EASEE_URL (Easee + estimate, «Energy – elbillading»), so an e-mail says which source failed. A run
+// with a failure pings /fail, so Erlend gets an e-mail at once; no pings at all (app down) alert after the grace
+// period. Fire and forget: a slow or failing monitor must never block or break the app.
+function heartbeat(url, ok, summary) {
   if (!url) return;
   fetch(ok ? url : `${url}/fail`, { method: 'POST', body: summary, signal: AbortSignal.timeout(10000) })
     .catch((err) => console.warn('heartbeat:', err.message));
@@ -57,30 +57,49 @@ async function collectAndEstimateEv(opts) {
   return result;
 }
 
-// The first Easee run fetches the full history (1–2 minutes), so the start-up run can still be going at hh:10.
-let collecting = false;
-
-async function scheduledCollect() {
+async function collectMeter() {
   if (!process.env.TIBBER_API_TOKEN) {
     console.warn('collect: TIBBER_API_TOKEN not set, skipping');
     return;
   }
+  try {
+    const result = await collect(db);
+    const summary = JSON.stringify(result);
+    console.log('collect:', summary);
+    heartbeat(process.env.HEALTHCHECK_ENERGY_URL, result.status === 200, summary);
+  } catch (err) {
+    console.error('collect error:', err.message);
+    heartbeat(process.env.HEALTHCHECK_ENERGY_URL, false, `collect error: ${err.message}`);
+  }
+}
+
+// EV charging from Easee (optional: only when EASEE_USERNAME is set), whatever happened to the meter run.
+async function collectCharging() {
+  if (!process.env.EASEE_USERNAME) return;
+  try {
+    const result = await collectAndEstimateEv();
+    const summary = JSON.stringify(result);
+    console.log('collect-ev:', summary);
+    heartbeat(process.env.HEALTHCHECK_EASEE_URL, result.status === 200, summary);
+  } catch (err) {
+    console.error('collect-ev error:', err.message);
+    heartbeat(process.env.HEALTHCHECK_EASEE_URL, false, `collect-ev error: ${err.message}`);
+  }
+}
+
+// The first Easee run fetches the full history (1–2 minutes), so the start-up run can still be going at hh:10.
+let collecting = false;
+
+// Meter first, then charging: the estimate reads the meter rows the first part has just written.
+async function scheduledCollect() {
   if (collecting) {
     console.warn('collect: previous run still going, skipping');
     return;
   }
   collecting = true;
   try {
-    const result = await collect(db);
-    // EV charging from Easee (optional: only when EASEE_USERNAME is set). Its failure fails the heartbeat too.
-    let ev = null;
-    if (process.env.EASEE_USERNAME) ev = await collectAndEstimateEv().catch((err) => ({ status: 502, error: err.message }));
-    const summary = JSON.stringify(ev ? { ...result, ev } : result);
-    console.log('collect:', summary);
-    heartbeat(result.status === 200 && (!ev || ev.status === 200), summary);
-  } catch (err) {
-    console.error('collect error:', err.message);
-    heartbeat(false, `collect error: ${err.message}`);
+    await collectMeter();
+    await collectCharging();
   } finally {
     collecting = false;
   }
